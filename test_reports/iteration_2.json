@@ -1,0 +1,44 @@
+{
+  "summary": "Tested 3 new WedSnap features: Couple Invitations, Live Slideshow, Upload Protection (login lockout + guest upload rate limit). Backend: 6/8 pytest tests pass. Frontend: all UI flows for invite couple, magic-link login, /invite/badtoken error, /my-gallery redirect, slideshow (with & without photos), and slideshow controls verified end-to-end via Playwright. Found ONE critical backend bug: login brute-force lockout fails in the deployed environment because request.client.host resolves to the ingress-nginx pod IP (10.81.21.4 / 10.81.21.6) which round-robins across pods, splitting the per-identifier fail counter so the 5-strike threshold is never reached from a single external IP.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout NOT triggered from external clients. Identifier is built from `request.client.host:email` but in this K8s environment request.client.host is the ingress pod IP and round-robins between multiple pods (observed 10.81.21.4 & 10.81.21.6 in login_attempts collection), so no single identifier accumulates 5 fails. Locally (127.0.0.1) it locks fine on the 5th attempt. Fix: use `request.headers.get('x-forwarded-for','').split(',')[0].strip() or request.client.host` for the IP portion of the identifier.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/public/wedding/{slug}/upload", "issue": "Upload rate limit (40/60s) uses the same request.client.host — will also be per-pod, not per real client IP. Same fix (X-Forwarded-For) applies. Code path and constants (UPLOAD_RATE_LIMIT=40, WINDOW=60) verified via source. 45 rapid uploads from tester did not trigger 429 (spread across pods)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wedsnap_new_features.py",
+    "/app/backend/tests/test_wedsnap_backend.py",
+    "/app/test_reports/pytest/new_features.xml"
+  ],
+  "action_items": [
+    "HIGH: In /api/auth/login and check_upload_rate(), replace `request.client.host` with the first entry of `X-Forwarded-For` (fall back to client.host). Without this, brute-force lockout and guest upload rate-limit are effectively bypassed in the deployed K8s ingress setup.",
+    "OPTIONAL: On the 5th failed login (which sets the lock and returns 401), consider returning 429 immediately so users see the lockout message right away instead of on the 6th attempt.",
+    "OPTIONAL: The Slideshow image tile occasionally shows as an empty gold placeholder for a couple seconds while AuthedMedia blob-fetches the file; a subtle loading spinner would improve perceived polish."
+  ],
+  "critical_code_review_comments": [
+    "server.py login() and check_upload_rate() trust request.client.host which is the immediate TCP peer. In any reverse-proxy/K8s deploy this is the proxy IP and often round-robins across ingress pods. Must read X-Forwarded-For for meaningful per-client rate limiting/lockout.",
+    "accept_invite handles missing/expired token correctly (404/410) and issues httpOnly cookies matching login flow — good.",
+    "invite_couple auto-creates a couple user with a random password and 30-day multi-use token — token invalidation on use is not implemented; consider rotating token or single-use if security posture requires.",
+    "send_email() surfacing of provider errors: 422 for undeliverable recipients is neatly propagated with a user-friendly reason — good UX.",
+    "Slideshow.js polls /api/gallery/{slug} every 12s and shows a 'New memory' toast; works cleanly for restaurant/couple/admin via cookie auth.",
+    "InviteAccept.js correctly falls back to invite-error state on 4xx and redirects to /my-gallery on success — solid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wedsnap_new_features.py (new)"
+  ],
+  "success_rate": {"backend": "75% (6/8 new-feature tests, 1 real bug, 1 environment-masked)", "frontend": "100%"},
+  "test_credentials": "Admin zx31808@seeu.edu.mk/Admin@2026, Restaurant venue@wedsnap.com/Venue@2026, invite wedding slug=75817eab55 (couple_email=delivered@resend.dev), photo wedding slug=cec8f84007",
+  "seed_data_creation": "Created 2 TEST_ weddings (one without couple_email, one with @example.com) for invite negative tests. ~45 tiny TEST_rl_* PNGs uploaded to cec8f84007 while probing upload rate-limit (all photos, non-destructive; can be pruned by prefix).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New test file /app/backend/tests/test_wedsnap_new_features.py. The lockout test currently FAILS in this env because of X-Forwarded-For issue described above. After main agent fixes IP extraction, re-run pytest backend/tests/test_wedsnap_new_features.py -v. All frontend flows for invite couple, /invite/{token} magic-login → /my-gallery, /invite/badtoken → invite-error, slideshow with & without photos, and slide controls (play/next/prev) were verified via Playwright and work correctly.",
+  "rca of the issue": "Login lockout failure RCA: server.py builds identifier as `f'{ip}:{email}'` from `request.client.host`. Under K8s ingress, that value is the internal cluster pod IP of whichever nginx-ingress pod terminated the TCP connection. There are ≥2 such pods, so consecutive requests from the same external client alternate identifiers (observed rows 10.81.21.4:… and 10.81.21.6:… in db.login_attempts). Each identifier tops out at ~2–4 fails, never reaching LOGIN_MAX_FAILS=5. Reproduction: `for i in 1..7; curl POST /api/auth/login with same wrong creds` → all 401. Mitigation: parse X-Forwarded-For (first hop) for the client IP. Same root cause affects check_upload_rate()."
+}

@@ -11,6 +11,8 @@ import RestaurantDashboard from "@/pages/RestaurantDashboard";
 import WeddingDetail from "@/pages/WeddingDetail";
 import CoupleGallery from "@/pages/CoupleGallery";
 import AdminDashboard from "@/pages/AdminDashboard";
+import InviteAccept from "@/pages/InviteAccept";
+import Slideshow from "@/pages/Slideshow";
 
 function Loader() {
   return (
@@ -42,6 +44,8 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/wedding/:slug" element={<GuestUpload />} />
+            <Route path="/invite/:token" element={<InviteAccept />} />
+            <Route path="/slideshow/:slug" element={<Protected roles={["restaurant", "admin", "couple"]}><Slideshow /></Protected>} />
             <Route path="/dashboard" element={<Protected roles={["restaurant"]}><RestaurantDashboard /></Protected>} />
             <Route path="/dashboard/wedding/:slug" element={<Protected roles={["restaurant", "admin"]}><WeddingDetail /></Protected>} />
             <Route path="/my-gallery" element={<Protected roles={["couple"]}><CoupleGallery /></Protected>} />

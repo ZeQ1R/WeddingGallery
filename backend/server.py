@@ -6,15 +6,19 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import io
 import uuid
+import time
 import base64
+import secrets
 import logging
 import zipfile
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 
 import jwt
 import bcrypt
 import qrcode
+import httpx
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Form, Query, Header
 from starlette.responses import Response as StarletteResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -48,6 +52,66 @@ PLANS = {
     "pro": {"name": "Pro", "price": 149, "max_weddings": 25, "storage_gb": 150},
     "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
 }
+
+# ---- email (Emergent-managed Resend) ----
+EMAIL_BASE_URL = "https://integrations.emergentagent.com"
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "WedSnap")
+
+
+async def send_email(to_email: str, subject: str, html: str):
+    payload = {"to": [to_email], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+    async with httpx.AsyncClient(timeout=30) as c:
+        resp = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
+                            headers={"X-Email-Key": EMAIL_KEY}, json=payload)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---- abuse protection ----
+UPLOAD_RATE_LIMIT = 40          # uploads per window per IP
+UPLOAD_RATE_WINDOW = 60         # seconds
+LOGIN_MAX_FAILS = 5
+LOGIN_LOCKOUT_MIN = 15
+_upload_hits = defaultdict(list)
+
+
+def check_upload_rate(ip: str) -> bool:
+    now = time.time()
+    hits = _upload_hits[ip]
+    while hits and hits[0] < now - UPLOAD_RATE_WINDOW:
+        hits.pop(0)
+    if len(hits) >= UPLOAD_RATE_LIMIT:
+        return False
+    hits.append(now)
+    return True
+
+
+def invite_email_html(bride: str, groom: str, link: str) -> str:
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#FDFBF7;padding:32px 0;font-family:Arial,Helvetica,sans-serif">
+      <tr><td align="center">
+        <table width="480" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border:1px solid #E8E6E1;border-radius:24px;overflow:hidden">
+          <tr><td style="background:#1A1A1A;padding:28px 32px" align="center">
+            <span style="color:#C5A059;font-size:26px;font-weight:bold;letter-spacing:1px">WedSnap</span>
+          </td></tr>
+          <tr><td style="padding:40px 40px 8px" align="center">
+            <p style="color:#C5A059;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px">Your private gallery is ready</p>
+            <h1 style="color:#1A1A1A;font-size:34px;margin:0;font-weight:400">{bride} &amp; {groom}</h1>
+            <p style="color:#5C5C5C;font-size:15px;line-height:1.6;margin:20px 0 0">
+              Every photo and video your guests captured is waiting for you in one elegant place.
+              Tap below to open your private gallery — no password needed.
+            </p>
+          </td></tr>
+          <tr><td style="padding:28px 40px 40px" align="center">
+            <a href="{link}" style="display:inline-block;background:#C5A059;color:#FFFFFF;text-decoration:none;padding:15px 40px;border-radius:999px;font-size:16px;font-weight:bold">Open my gallery</a>
+            <p style="color:#999999;font-size:12px;margin:24px 0 0">This secure link is just for you. Please don't share it.</p>
+          </td></tr>
+        </table>
+        <p style="color:#999999;font-size:12px;margin:20px 0 0">Sent with love by WedSnap</p>
+      </td></tr>
+    </table>
+    """
 
 
 # ---------------------------------------------------------------- models
@@ -181,17 +245,52 @@ async def register(data: RegisterInput, response: Response):
 
 
 @api_router.post("/auth/login")
-async def login(data: LoginInput, response: Response):
+async def login(data: LoginInput, request: Request, response: Response):
     email = data.email.lower().strip()
+    ip = request.client.host if request.client else "unknown"
+    identifier = f"{ip}:{email}"
+    now = datetime.now(timezone.utc)
+
+    attempt = await db.login_attempts.find_one({"identifier": identifier})
+    if attempt and attempt.get("locked_until"):
+        locked = datetime.fromisoformat(attempt["locked_until"])
+        if locked > now:
+            mins = max(1, int((locked - now).total_seconds() // 60) + 1)
+            raise HTTPException(status_code=429, detail=f"Too many attempts. Try again in {mins} minute(s).")
+
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(data.password, user["password_hash"]):
+        fails = (attempt.get("fails", 0) if attempt else 0) + 1
+        upd = {"identifier": identifier, "fails": fails, "updated_at": now.isoformat()}
+        if fails >= LOGIN_MAX_FAILS:
+            upd["locked_until"] = (now + timedelta(minutes=LOGIN_LOCKOUT_MIN)).isoformat()
+            upd["fails"] = 0
+        await db.login_attempts.update_one({"identifier": identifier}, {"$set": upd}, upsert=True)
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    await db.login_attempts.delete_one({"identifier": identifier})
     uid = str(user["_id"])
     access = create_access_token(uid, email, user["role"])
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
     await audit(uid, "login", f"{user['role']} logged in")
     return user_public(user)
+
+
+@api_router.post("/auth/invite/{token}")
+async def accept_invite(token: str, response: Response):
+    couple = await db.users.find_one({"invite_token": token, "role": "couple"})
+    if not couple:
+        raise HTTPException(status_code=404, detail="This invitation is invalid or has expired")
+    exp = couple.get("invite_expires")
+    if exp and datetime.fromisoformat(exp) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="This invitation has expired. Ask the venue to resend it.")
+    uid = str(couple["_id"])
+    access = create_access_token(uid, couple["email"], "couple")
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    await audit(uid, "accept_invite", "Couple opened gallery via invite link")
+    return user_public(couple)
 
 
 @api_router.post("/auth/logout")
@@ -315,6 +414,56 @@ async def wedding_qr(slug: str, user: dict = Depends(require_role("restaurant", 
     return {"url": url, "qr_data_url": f"data:image/png;base64,{b64}"}
 
 
+@api_router.post("/weddings/{slug}/invite")
+async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+    couple_email = w.get("couple_email")
+    if not couple_email:
+        raise HTTPException(status_code=400, detail="Add the couple's email to this wedding first.")
+
+    couple = await db.users.find_one({"email": couple_email})
+    if not couple:
+        res = await db.users.insert_one({
+            "name": f"{w['bride_name']} & {w['groom_name']}",
+            "email": couple_email,
+            "password_hash": hash_password(uuid.uuid4().hex),
+            "role": "couple",
+            "wedding_id": slug,
+            "created_at": now_iso(),
+        })
+        couple = await db.users.find_one({"_id": res.inserted_id})
+    elif couple.get("role") != "couple":
+        raise HTTPException(status_code=400, detail="That email belongs to another account type.")
+
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    await db.users.update_one({"_id": couple["_id"]},
+                              {"$set": {"invite_token": token, "invite_expires": expires, "wedding_id": slug}})
+
+    link = f"{os.environ['FRONTEND_URL']}/invite/{token}"
+    try:
+        await send_email(couple_email,
+                         f"Your wedding gallery — {w['bride_name']} & {w['groom_name']}",
+                         invite_email_html(w["bride_name"], w["groom_name"], link))
+    except httpx.HTTPStatusError as e:
+        logger.error(f"invite email failed: {e.response.status_code} {e.response.text}")
+        reason = "the email address looks undeliverable"
+        try:
+            reason = e.response.json().get("message", reason)
+        except Exception:
+            pass
+        raise HTTPException(status_code=422, detail=f"Couldn't send invite — {reason}")
+    except Exception as e:
+        logger.error(f"invite email failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not send the invitation email. Please try again.")
+    await audit(str(user["_id"]), "invite_couple", f"Invited {couple_email} to {slug}")
+    return {"message": f"Invitation sent to {couple_email}", "link": link}
+
+
 # ---------------------------------------------------------------- public (guest) endpoints
 @api_router.get("/public/wedding/{slug}")
 async def public_wedding(slug: str):
@@ -334,7 +483,10 @@ async def public_wedding(slug: str):
 
 
 @api_router.post("/public/wedding/{slug}/upload")
-async def guest_upload(slug: str, file: UploadFile = File(...), guest_name: str = Form("")):
+async def guest_upload(slug: str, request: Request, file: UploadFile = File(...), guest_name: str = Form("")):
+    ip = request.client.host if request.client else "unknown"
+    if not check_upload_rate(ip):
+        raise HTTPException(status_code=429, detail="You're uploading very fast — please wait a moment and try again.")
     w = await db.weddings.find_one({"slug": slug})
     if not w:
         raise HTTPException(status_code=404, detail="Wedding not found")
@@ -621,6 +773,8 @@ async def startup():
     await db.uploads.create_index("wedding_slug")
     await db.uploads.create_index("id", unique=True)
     await db.messages.create_index("wedding_slug")
+    await db.login_attempts.create_index("identifier")
+    await db.users.create_index("invite_token")
 
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_pw = os.environ["ADMIN_PASSWORD"]

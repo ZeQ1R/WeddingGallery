@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle } from "@phosphor-icons/react";
+import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, Play } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
@@ -15,6 +15,7 @@ export default function WeddingDetail() {
   const [wedding, setWedding] = useState(null);
   const [qr, setQr] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     api.get(`/weddings/${slug}`).then(({ data }) => setWedding(data)).catch((e) => {
@@ -39,6 +40,15 @@ export default function WeddingDetail() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
+  const inviteCouple = async () => {
+    setInviting(true);
+    try {
+      const { data } = await api.post(`/weddings/${slug}/invite`);
+      toast.success(data.message || "Invitation sent");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setInviting(false); }
+  };
+
   if (!wedding) return <div className="min-h-screen flex items-center justify-center bg-wed-bg">
     <div className="w-10 h-10 rounded-full border-2 border-wed-gold border-t-transparent animate-spin" /></div>;
 
@@ -46,7 +56,13 @@ export default function WeddingDetail() {
     <div className="min-h-screen bg-wed-bg">
       <TopBar title={`${wedding.bride_name} & ${wedding.groom_name}`} subtitle={wedding.venue || "Wedding gallery"}
         right={
-          <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+          <div className="flex items-center gap-2">
+            <Link to={`/slideshow/${slug}`} data-testid="slideshow-btn">
+              <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent px-4 hidden sm:flex">
+                <Play weight="fill" size={16} className="mr-1.5" /> Slideshow
+              </Button>
+            </Link>
+            <Dialog open={qrOpen} onOpenChange={setQrOpen}>
             <DialogTrigger asChild>
               <Button data-testid="show-qr-btn" className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5">
                 <QrCode size={18} className="mr-1.5" /> QR code
@@ -72,6 +88,7 @@ export default function WeddingDetail() {
               ) : <div className="h-56 shimmer rounded-2xl" />}
             </DialogContent>
           </Dialog>
+          </div>
         } />
 
       <main className="max-w-6xl mx-auto px-6 py-8">
@@ -92,7 +109,11 @@ export default function WeddingDetail() {
               {wedding.venue && <span className="flex items-center gap-1.5"><MapPin size={15} className="text-wed-gold" /> {wedding.venue}</span>}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={inviteCouple} disabled={inviting} data-testid="invite-couple"
+              className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11">
+              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : "Invite couple"}
+            </Button>
             {wedding.status !== "completed" ? (
               <Button onClick={() => setStatus("completed")} data-testid="mark-completed" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11">
                 <CheckCircle size={18} className="mr-1.5" /> Mark completed

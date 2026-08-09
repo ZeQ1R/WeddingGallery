@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Heart } from "@phosphor-icons/react";
+import { Heart, Play } from "@phosphor-icons/react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TopBar } from "@/components/TopBar";
 import { Gallery } from "@/components/Gallery";
+import { Button } from "@/components/ui/button";
 
 export default function CoupleGallery() {
   const { user } = useAuth();
@@ -29,7 +31,14 @@ export default function CoupleGallery() {
 
   return (
     <div className="min-h-screen bg-wed-bg">
-      <TopBar title={wedding ? `${wedding.bride_name} & ${wedding.groom_name}` : "Your gallery"} subtitle="Your private wedding gallery" />
+      <TopBar title={wedding ? `${wedding.bride_name} & ${wedding.groom_name}` : "Your gallery"} subtitle="Your private wedding gallery"
+        right={
+          <Link to={`/slideshow/${slug}`} data-testid="couple-slideshow-btn">
+            <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent px-4">
+              <Play weight="fill" size={16} className="mr-1.5" /> Slideshow
+            </Button>
+          </Link>
+        } />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {wedding && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
