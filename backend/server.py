@@ -47,7 +47,7 @@ ALLOWED_IMAGE = {"jpg", "jpeg", "png", "gif", "webp", "heic", "heif"}
 ALLOWED_VIDEO = {"mp4", "mov", "webm", "avi", "mpeg", "mpg", "quicktime"}
 
 PLANS = {
-    "free_trial": {"name": "Free Trial", "price": 0, "max_weddings": 1, "storage_gb": 2},
+    "free_trial": {"name": "Free Trial", "price": 0, "max_weddings": 25, "storage_gb": 5},
     "basic": {"name": "Basic", "price": 49, "max_weddings": 5, "storage_gb": 25},
     "pro": {"name": "Pro", "price": 149, "max_weddings": 25, "storage_gb": 150},
     "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
@@ -355,10 +355,11 @@ def wedding_public(w: dict) -> dict:
 
 @api_router.post("/weddings")
 async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("restaurant", "admin"))):
-    plan = PLANS.get(user.get("plan", "free_trial"))
-    count = await db.weddings.count_documents({"restaurant_id": str(user["_id"])})
-    if count >= plan["max_weddings"]:
-        raise HTTPException(status_code=403, detail=f"Plan limit reached ({plan['name']}: {plan['max_weddings']} weddings). Upgrade to add more.")
+    if user.get("role") != "admin":
+        plan = PLANS.get(user.get("plan", "free_trial"), PLANS["free_trial"])
+        count = await db.weddings.count_documents({"restaurant_id": str(user["_id"])})
+        if count >= plan["max_weddings"]:
+            raise HTTPException(status_code=403, detail=f"Plan limit reached ({plan['name']}: {plan['max_weddings']} weddings). Upgrade to add more.")
     slug = uuid.uuid4().hex[:10]
     doc = {
         "slug": slug,
