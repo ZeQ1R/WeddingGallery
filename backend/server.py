@@ -198,6 +198,7 @@ def user_public(user: dict) -> dict:
         "plan": user.get("plan"),
         "wedding_id": user.get("wedding_id"),
         "password_set": user.get("password_set", user.get("role") != "couple"),
+        "status": user.get("status", "active"),
     }
 
 
@@ -244,6 +245,7 @@ async def register(data: RegisterInput, response: Response):
         "role": "restaurant",
         "business_name": data.business_name or data.name,
         "plan": "free_trial",
+        "status": "pending",
         "created_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
@@ -356,6 +358,11 @@ def wedding_public(w: dict) -> dict:
 @api_router.post("/weddings")
 async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("restaurant", "admin"))):
     if user.get("role") != "admin":
+        status = user.get("status", "active")
+        if status == "pending":
+            raise HTTPException(status_code=403, detail="Your venue is awaiting admin approval. You'll be able to create weddings once approved.")
+        if status == "suspended":
+            raise HTTPException(status_code=403, detail="Your venue account is suspended. Please contact the platform admin.")
         plan = PLANS.get(user.get("plan", "free_trial"), PLANS["free_trial"])
         count = await db.weddings.count_documents({"restaurant_id": str(user["_id"])})
         if count >= plan["max_weddings"]:
@@ -771,7 +778,7 @@ async def admin_update_restaurant(rid: str, plan: Optional[str] = Query(None),
     updates = {}
     if plan and plan in PLANS:
         updates["plan"] = plan
-    if status in ("active", "suspended"):
+    if status in ("active", "suspended", "pending"):
         updates["status"] = status
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")

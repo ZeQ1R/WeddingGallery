@@ -29,6 +29,12 @@ A SaaS platform so a bride and groom never lose a single wedding memory. Each we
 - Upload Protection: login brute-force lockout (5 fails -> 15 min, 429) and guest-upload rate limit (40/60s per IP), both using X-Forwarded-For for real client IP behind K8s ingress.
 - Luxury UI: Cormorant Garamond + Manrope fonts, gold/beige palette, rounded cards, glass headers, animations.
 
+## Signup / approval model (2026-08-09)
+- Venues self-register at /register but are created with `status="pending"`. They can log in but cannot create weddings until an admin approves them (create_wedding returns 403 for pending/suspended).
+- Admin approves in the Admin dashboard restaurant table ("Approve" button → sets status active). Admin can also Suspend/Reactivate. `user_public` now returns `status`.
+- Couples are NEVER self-registered — they are invited by a venue (magic link) and set their own password. No public "couple" signup option (privacy: couples must be tied to one wedding).
+- Free Trial plan raised to 25 weddings (testing); admin has no wedding cap. Demo venue venue@wedsnap.com upgraded to Enterprise.
+
 ## Privacy model (2026-08-09)
 - Guest photos/videos/messages are PRIVATE to the couple. `_can_access_wedding` allows only the owning couple + admin; the venue/restaurant is 403 on /gallery, /gallery/{slug}/messages, /files/{id}, favorite, delete, and /gallery/{slug}/download.
 - Venue retains wedding management only: create, list, detail metadata (incl. memory count), QR generate/download, invite couple, status toggle. WeddingDetail shows a privacy panel instead of the gallery; no slideshow button for venue.

@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function RestaurantDashboard() {
   const { user } = useAuth();
+  const isPending = user?.status === "pending";
   const [weddings, setWeddings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all");
@@ -54,9 +55,9 @@ export default function RestaurantDashboard() {
     <div className="min-h-screen bg-wed-bg">
       <TopBar title="Weddings" subtitle={user?.business_name}
         right={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(o) => { if (isPending) { toast.error("Your venue is awaiting admin approval."); return; } setOpen(o); }}>
             <DialogTrigger asChild>
-              <Button data-testid="new-wedding-btn" className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5">
+              <Button data-testid="new-wedding-btn" disabled={isPending} className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5 disabled:opacity-50">
                 <Plus size={18} className="mr-1.5" /> New wedding
               </Button>
             </DialogTrigger>
@@ -91,6 +92,21 @@ export default function RestaurantDashboard() {
         } />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+        {isPending && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} data-testid="pending-banner"
+            className="rounded-3xl bg-wed-goldLight/60 border border-wed-gold/30 p-6 sm:p-7 mb-8 flex items-start gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-white border border-wed-line flex items-center justify-center shrink-0">
+              <Sparkle weight="light" size={22} className="text-wed-gold" />
+            </div>
+            <div>
+              <p className="font-serif text-2xl leading-tight">Your venue is awaiting approval</p>
+              <p className="text-wed-text2 text-sm mt-1.5">
+                Thanks for signing up! A platform admin will review your venue shortly. Once approved, you'll be able to
+                create weddings, generate QR codes and invite couples.
+              </p>
+            </div>
+          </motion.div>
+        )}
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-10">
           {[

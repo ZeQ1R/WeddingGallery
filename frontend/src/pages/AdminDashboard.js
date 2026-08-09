@@ -32,6 +32,10 @@ export default function AdminDashboard() {
     try { await api.patch(`/admin/restaurants/${r.id}`, null, { params: { status } }); toast.success(`Restaurant ${status}`); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const approve = async (r) => {
+    try { await api.patch(`/admin/restaurants/${r.id}`, null, { params: { status: "active" } }); toast.success("Venue approved"); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const cards = stats ? [
     { l: "Restaurants", v: stats.total_restaurants, icon: Buildings },
@@ -88,11 +92,21 @@ export default function AdminDashboard() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-3 text-right">
-                <Button size="sm" variant="outline" onClick={() => toggleSuspend(r)} data-testid={`suspend-${r.id}`}
-                  className={`rounded-full h-9 bg-transparent ${r.status === "suspended" ? "border-green-300 text-green-600" : "border-red-200 text-red-500"}`}>
-                  {r.status === "suspended" ? "Reactivate" : "Suspend"}
-                </Button>
+              <div className="col-span-3 text-right flex items-center justify-end gap-2">
+                {r.status === "pending" && (
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">pending</span>
+                )}
+                {r.status === "pending" ? (
+                  <Button size="sm" onClick={() => approve(r)} data-testid={`approve-${r.id}`}
+                    className="rounded-full h-9 bg-wed-gold hover:bg-wed-goldHover text-white">
+                    Approve
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => toggleSuspend(r)} data-testid={`suspend-${r.id}`}
+                    className={`rounded-full h-9 bg-transparent ${r.status === "suspended" ? "border-green-300 text-green-600" : "border-red-200 text-red-500"}`}>
+                    {r.status === "suspended" ? "Reactivate" : "Suspend"}
+                  </Button>
+                )}
               </div>
             </div>
           ))}
