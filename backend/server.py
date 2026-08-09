@@ -1,89 +1,651 @@
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
-
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+import os
+import io
+import uuid
+import base64
+import logging
+import zipfile
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Annotated
+
+import jwt
+import bcrypt
+import qrcode
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Form, Query, Header
+from starlette.responses import Response as StarletteResponse
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, EmailStr, BeforeValidator, ConfigDict
+from bson import ObjectId
+
+import storage
+
+# ---------------------------------------------------------------- setup
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
 app = FastAPI()
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+JWT_ALGORITHM = "HS256"
+JWT_SECRET = os.environ["JWT_SECRET"]
+MAX_IMAGE_MB = 25
+MAX_VIDEO_MB = 200
+ALLOWED_IMAGE = {"jpg", "jpeg", "png", "gif", "webp", "heic", "heif"}
+ALLOWED_VIDEO = {"mp4", "mov", "webm", "avi", "mpeg", "mpg", "quicktime"}
+
+PLANS = {
+    "free_trial": {"name": "Free Trial", "price": 0, "max_weddings": 1, "storage_gb": 2},
+    "basic": {"name": "Basic", "price": 49, "max_weddings": 5, "storage_gb": 25},
+    "pro": {"name": "Pro", "price": 149, "max_weddings": 25, "storage_gb": 150},
+    "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
+}
+
+
+# ---------------------------------------------------------------- models
+def _validate_object_id(v):
+    if isinstance(v, ObjectId):
+        return str(v)
+    return str(v)
+
+PyObjectId = Annotated[str, BeforeValidator(_validate_object_id)]
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+class RegisterInput(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    business_name: Optional[str] = None
+
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class WeddingInput(BaseModel):
+    bride_name: str
+    groom_name: str
+    wedding_date: str
+    venue: Optional[str] = None
+    couple_email: Optional[str] = None
+
+
+class MessageInput(BaseModel):
+    guest_name: Optional[str] = None
+    text: str
+
+
+# ---------------------------------------------------------------- auth helpers
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def create_access_token(user_id: str, email: str, role: str) -> str:
+    payload = {"sub": user_id, "email": email, "role": role,
+               "exp": datetime.now(timezone.utc) + timedelta(hours=12), "type": "access"}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def create_refresh_token(user_id: str) -> str:
+    payload = {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "refresh"}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def set_auth_cookies(response: Response, access: str, refresh: str):
+    response.set_cookie("access_token", access, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
+    response.set_cookie("refresh_token", refresh, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+
+
+def user_public(user: dict) -> dict:
+    return {
+        "id": str(user["_id"]),
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "role": user.get("role"),
+        "business_name": user.get("business_name"),
+        "plan": user.get("plan"),
+        "wedding_id": user.get("wedding_id"),
+    }
+
+
+async def get_current_user(request: Request) -> dict:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def require_role(*roles):
+    async def checker(user: dict = Depends(get_current_user)):
+        if user.get("role") not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return checker
+
+
+# ---------------------------------------------------------------- auth routes
+@api_router.post("/auth/register")
+async def register(data: RegisterInput, response: Response):
+    email = data.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    doc = {
+        "name": data.name,
+        "email": email,
+        "password_hash": hash_password(data.password),
+        "role": "restaurant",
+        "business_name": data.business_name or data.name,
+        "plan": "free_trial",
+        "created_at": now_iso(),
+    }
+    res = await db.users.insert_one(doc)
+    uid = str(res.inserted_id)
+    access = create_access_token(uid, email, "restaurant")
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    await audit(uid, "register", f"Restaurant {data.business_name or data.name} registered")
+    doc["_id"] = res.inserted_id
+    return user_public(doc)
+
+
+@api_router.post("/auth/login")
+async def login(data: LoginInput, response: Response):
+    email = data.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    uid = str(user["_id"])
+    access = create_access_token(uid, email, user["role"])
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    await audit(uid, "login", f"{user['role']} logged in")
+    return user_public(user)
+
+
+@api_router.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+    return {"message": "Logged out"}
+
+
+@api_router.get("/auth/me")
+async def me(user: dict = Depends(get_current_user)):
+    return user_public(user)
+
+
+# ---------------------------------------------------------------- audit
+async def audit(user_id: Optional[str], action: str, detail: str):
+    await db.audit_logs.insert_one({
+        "user_id": user_id, "action": action, "detail": detail, "created_at": now_iso()
+    })
+
+
+# ---------------------------------------------------------------- weddings
+def wedding_public(w: dict) -> dict:
+    return {
+        "id": str(w["_id"]),
+        "slug": w["slug"],
+        "bride_name": w["bride_name"],
+        "groom_name": w["groom_name"],
+        "wedding_date": w["wedding_date"],
+        "venue": w.get("venue"),
+        "couple_email": w.get("couple_email"),
+        "status": w.get("status", "active"),
+        "restaurant_id": w.get("restaurant_id"),
+        "upload_count": w.get("upload_count", 0),
+        "created_at": w.get("created_at"),
+    }
+
+
+@api_router.post("/weddings")
+async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("restaurant", "admin"))):
+    plan = PLANS.get(user.get("plan", "free_trial"))
+    count = await db.weddings.count_documents({"restaurant_id": str(user["_id"])})
+    if count >= plan["max_weddings"]:
+        raise HTTPException(status_code=403, detail=f"Plan limit reached ({plan['name']}: {plan['max_weddings']} weddings). Upgrade to add more.")
+    slug = uuid.uuid4().hex[:10]
+    doc = {
+        "slug": slug,
+        "bride_name": data.bride_name,
+        "groom_name": data.groom_name,
+        "wedding_date": data.wedding_date,
+        "venue": data.venue,
+        "couple_email": (data.couple_email or "").lower().strip() or None,
+        "status": "active",
+        "restaurant_id": str(user["_id"]),
+        "upload_count": 0,
+        "created_at": now_iso(),
+    }
+    res = await db.weddings.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    await audit(str(user["_id"]), "create_wedding", f"{data.bride_name} & {data.groom_name}")
+
+    # optionally create a couple account
+    if doc["couple_email"]:
+        if not await db.users.find_one({"email": doc["couple_email"]}):
+            temp_pw = uuid.uuid4().hex[:8]
+            await db.users.insert_one({
+                "name": f"{data.bride_name} & {data.groom_name}",
+                "email": doc["couple_email"],
+                "password_hash": hash_password(temp_pw),
+                "role": "couple",
+                "wedding_id": slug,
+                "temp_password": temp_pw,
+                "created_at": now_iso(),
+            })
+    return wedding_public(doc)
+
+
+@api_router.get("/weddings")
+async def list_weddings(status: Optional[str] = None, user: dict = Depends(require_role("restaurant", "admin"))):
+    q = {} if user["role"] == "admin" else {"restaurant_id": str(user["_id"])}
+    if status:
+        q["status"] = status
+    items = await db.weddings.find(q).sort("created_at", -1).to_list(1000)
+    return [wedding_public(w) for w in items]
+
+
+@api_router.get("/weddings/{slug}")
+async def get_wedding(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+    return wedding_public(w)
+
+
+@api_router.patch("/weddings/{slug}/status")
+async def update_wedding_status(slug: str, status: str = Query(...), user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+    await db.weddings.update_one({"slug": slug}, {"$set": {"status": status}})
+    return {"message": "updated", "status": status}
+
+
+@api_router.get("/weddings/{slug}/qr")
+async def wedding_qr(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    url = f"{os.environ['FRONTEND_URL']}/wedding/{slug}"
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#1A1A1A", back_color="#FFFFFF")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"url": url, "qr_data_url": f"data:image/png;base64,{b64}"}
+
+
+# ---------------------------------------------------------------- public (guest) endpoints
+@api_router.get("/public/wedding/{slug}")
+async def public_wedding(slug: str):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if w.get("status") == "suspended":
+        raise HTTPException(status_code=403, detail="This gallery is unavailable")
+    return {
+        "slug": w["slug"],
+        "bride_name": w["bride_name"],
+        "groom_name": w["groom_name"],
+        "wedding_date": w["wedding_date"],
+        "venue": w.get("venue"),
+        "status": w.get("status"),
+    }
+
+
+@api_router.post("/public/wedding/{slug}/upload")
+async def guest_upload(slug: str, file: UploadFile = File(...), guest_name: str = Form("")):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if w.get("status") == "suspended":
+        raise HTTPException(status_code=403, detail="Uploads are disabled for this wedding")
+
+    ext = (file.filename.split(".")[-1] if "." in file.filename else "bin").lower()
+    ctype = (file.content_type or "").lower()
+    if ext in ALLOWED_IMAGE or ctype.startswith("image/"):
+        media_type = "photo"
+        limit = MAX_IMAGE_MB
+    elif ext in ALLOWED_VIDEO or ctype.startswith("video/"):
+        media_type = "video"
+        limit = MAX_VIDEO_MB
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload a photo or video.")
+
+    data = await file.read()
+    size_mb = len(data) / (1024 * 1024)
+    if size_mb > limit:
+        raise HTTPException(status_code=400, detail=f"File too large. Max {limit}MB for {media_type}s.")
+
+    path = f"{storage.APP_NAME}/{slug}/{uuid.uuid4().hex}.{ext}"
+    result = storage.put_object(path, data, file.content_type or "application/octet-stream")
+
+    upload_id = str(uuid.uuid4())
+    await db.uploads.insert_one({
+        "id": upload_id,
+        "wedding_slug": slug,
+        "storage_path": result["path"],
+        "media_type": media_type,
+        "content_type": file.content_type,
+        "original_filename": file.filename,
+        "size": result.get("size", len(data)),
+        "guest_name": guest_name.strip() or "Anonymous",
+        "is_favorite": False,
+        "is_deleted": False,
+        "created_at": now_iso(),
+    })
+    await db.weddings.update_one({"slug": slug}, {"$inc": {"upload_count": 1}})
+    return {"id": upload_id, "media_type": media_type, "message": "Uploaded"}
+
+
+@api_router.post("/public/wedding/{slug}/message")
+async def guest_message(slug: str, data: MessageInput):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "wedding_slug": slug,
+        "guest_name": (data.guest_name or "").strip() or "Anonymous",
+        "text": data.text.strip(),
+        "created_at": now_iso(),
+    }
+    await db.messages.insert_one(doc)
+    return {"message": "Thank you for your wish!"}
+
+
+# ---------------------------------------------------------------- file serving
+async def _can_access_wedding(slug: str, user: dict) -> bool:
+    if user["role"] == "admin":
+        return True
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        return False
+    if user["role"] == "restaurant":
+        return w["restaurant_id"] == str(user["_id"])
+    if user["role"] == "couple":
+        return user.get("wedding_id") == slug
+    return False
+
+
+@api_router.get("/files/{upload_id}")
+async def serve_file(upload_id: str, request: Request, auth: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+    # authenticate via header, query token (for <img>/<video> tags), or cookie
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif auth:
+        token = auth
+    else:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    rec = await db.uploads.find_one({"id": upload_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_wedding(rec["wedding_slug"], user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    content, ctype = storage.get_object(rec["storage_path"])
+    return StarletteResponse(content=content, media_type=rec.get("content_type") or ctype)
+
+
+# ---------------------------------------------------------------- gallery (restaurant + couple + admin)
+def upload_public(u: dict) -> dict:
+    return {
+        "id": u["id"],
+        "media_type": u["media_type"],
+        "guest_name": u.get("guest_name"),
+        "original_filename": u.get("original_filename"),
+        "is_favorite": u.get("is_favorite", False),
+        "created_at": u.get("created_at"),
+    }
+
+
+@api_router.get("/gallery/{slug}")
+async def gallery(slug: str, media_type: Optional[str] = None, favorites: bool = False,
+                  search: Optional[str] = None, user: dict = Depends(get_current_user)):
+    if not await _can_access_wedding(slug, user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    q = {"wedding_slug": slug, "is_deleted": False}
+    if media_type in ("photo", "video"):
+        q["media_type"] = media_type
+    if favorites:
+        q["is_favorite"] = True
+    if search:
+        q["guest_name"] = {"$regex": search, "$options": "i"}
+    items = await db.uploads.find(q).sort("created_at", -1).to_list(2000)
+    return [upload_public(u) for u in items]
+
+
+@api_router.get("/gallery/{slug}/messages")
+async def gallery_messages(slug: str, user: dict = Depends(get_current_user)):
+    if not await _can_access_wedding(slug, user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    items = await db.messages.find({"wedding_slug": slug}).sort("created_at", -1).to_list(1000)
+    return [{"id": m["id"], "guest_name": m.get("guest_name"), "text": m["text"], "created_at": m.get("created_at")} for m in items]
+
+
+@api_router.post("/gallery/upload/{upload_id}/favorite")
+async def toggle_favorite(upload_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.uploads.find_one({"id": upload_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not await _can_access_wedding(rec["wedding_slug"], user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    new_val = not rec.get("is_favorite", False)
+    await db.uploads.update_one({"id": upload_id}, {"$set": {"is_favorite": new_val}})
+    return {"id": upload_id, "is_favorite": new_val}
+
+
+@api_router.delete("/gallery/upload/{upload_id}")
+async def delete_upload(upload_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.uploads.find_one({"id": upload_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not await _can_access_wedding(rec["wedding_slug"], user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    await db.uploads.update_one({"id": upload_id}, {"$set": {"is_deleted": True}})
+    await db.weddings.update_one({"slug": rec["wedding_slug"]}, {"$inc": {"upload_count": -1}})
+    return {"message": "Deleted"}
+
+
+@api_router.get("/gallery/{slug}/download")
+async def download_all(slug: str, request: Request, auth: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif auth:
+        token = auth
+    else:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if not user or not await _can_access_wedding(slug, user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    items = await db.uploads.find({"wedding_slug": slug, "is_deleted": False}).to_list(2000)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, u in enumerate(items):
+            try:
+                content, _ = storage.get_object(u["storage_path"])
+                ext = u["storage_path"].split(".")[-1]
+                name = f"{i+1:04d}_{u.get('guest_name','guest')}.{ext}"
+                zf.writestr(name, content)
+            except Exception as e:
+                logger.error(f"zip error {e}")
+    buf.seek(0)
+    return StarletteResponse(content=buf.getvalue(), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{slug}-memories.zip"'})
+
+
+# ---------------------------------------------------------------- plans + admin
+@api_router.get("/plans")
+async def get_plans():
+    return PLANS
+
+
+@api_router.get("/admin/analytics")
+async def admin_analytics(user: dict = Depends(require_role("admin"))):
+    total_restaurants = await db.users.count_documents({"role": "restaurant"})
+    total_weddings = await db.weddings.count_documents({})
+    active_weddings = await db.weddings.count_documents({"status": "active"})
+    total_uploads = await db.uploads.count_documents({"is_deleted": False})
+    photos = await db.uploads.count_documents({"is_deleted": False, "media_type": "photo"})
+    videos = await db.uploads.count_documents({"is_deleted": False, "media_type": "video"})
+
+    size_agg = await db.uploads.aggregate([
+        {"$match": {"is_deleted": False}},
+        {"$group": {"_id": None, "total": {"$sum": "$size"}}}
+    ]).to_list(1)
+    storage_bytes = size_agg[0]["total"] if size_agg else 0
+
+    revenue = 0
+    restaurants = await db.users.find({"role": "restaurant"}).to_list(1000)
+    for r in restaurants:
+        revenue += PLANS.get(r.get("plan", "free_trial"), {}).get("price", 0)
+
+    return {
+        "total_restaurants": total_restaurants,
+        "total_weddings": total_weddings,
+        "active_weddings": active_weddings,
+        "total_uploads": total_uploads,
+        "photos": photos,
+        "videos": videos,
+        "storage_bytes": storage_bytes,
+        "storage_gb": round(storage_bytes / (1024 ** 3), 3),
+        "monthly_revenue": revenue,
+    }
+
+
+@api_router.get("/admin/restaurants")
+async def admin_restaurants(user: dict = Depends(require_role("admin"))):
+    items = await db.users.find({"role": "restaurant"}).sort("created_at", -1).to_list(1000)
+    out = []
+    for r in items:
+        wc = await db.weddings.count_documents({"restaurant_id": str(r["_id"])})
+        out.append({
+            "id": str(r["_id"]),
+            "name": r.get("name"),
+            "email": r.get("email"),
+            "business_name": r.get("business_name"),
+            "plan": r.get("plan"),
+            "status": r.get("status", "active"),
+            "wedding_count": wc,
+            "created_at": r.get("created_at"),
+        })
+    return out
+
+
+@api_router.patch("/admin/restaurants/{rid}")
+async def admin_update_restaurant(rid: str, plan: Optional[str] = Query(None),
+                                  status: Optional[str] = Query(None),
+                                  user: dict = Depends(require_role("admin"))):
+    updates = {}
+    if plan and plan in PLANS:
+        updates["plan"] = plan
+    if status in ("active", "suspended"):
+        updates["status"] = status
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    await db.users.update_one({"_id": ObjectId(rid)}, {"$set": updates})
+    await audit(str(user["_id"]), "admin_update_restaurant", f"{rid} -> {updates}")
+    return {"message": "updated", **updates}
+
+
+# ---------------------------------------------------------------- startup
+@app.on_event("startup")
+async def startup():
+    try:
+        storage.init_storage()
+        logger.info("Storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
+
+    await db.users.create_index("email", unique=True)
+    await db.weddings.create_index("slug", unique=True)
+    await db.weddings.create_index("restaurant_id")
+    await db.uploads.create_index("wedding_slug")
+    await db.uploads.create_index("id", unique=True)
+    await db.messages.create_index("wedding_slug")
+
+    admin_email = os.environ["ADMIN_EMAIL"].lower()
+    admin_pw = os.environ["ADMIN_PASSWORD"]
+    existing = await db.users.find_one({"email": admin_email})
+    if existing is None:
+        await db.users.insert_one({
+            "name": "Platform Admin", "email": admin_email,
+            "password_hash": hash_password(admin_pw), "role": "admin", "created_at": now_iso(),
+        })
+        logger.info("Admin seeded")
+    elif existing["role"] != "admin" or not verify_password(admin_pw, existing["password_hash"]):
+        await db.users.update_one({"email": admin_email},
+                                  {"$set": {"role": "admin", "password_hash": hash_password(admin_pw)}})
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+app.include_router(api_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=[os.environ.get("FRONTEND_URL", "*"), "*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

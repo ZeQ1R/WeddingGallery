@@ -1,0 +1,37 @@
+{
+  "summary": "Full backend + frontend testing of WedSnap. Backend: 28/28 pytest cases passed covering auth (login/logout/register/me + RBAC), weddings CRUD, QR generation, public guest upload (photo + unsupported rejection), guest message, gallery list/messages/favorite/serve-file/zip download, admin analytics/restaurants/plan-change/suspend, cross-role access denial. Frontend Playwright covered: admin login lands /admin, restaurant table + analytics visible, plan dropdown works (Pro applied), suspend buttons present, logout redirects to /login, restaurant login lands /dashboard, new wedding creation dialog submits and appears (4 cards visible after), wedding detail QR generation + qr-image + download-qr + copy-link, gallery filters (all/photo/video/favorites), views (grid/timeline/messages), search, favorite toggle, delete buttons, guest public page loads with couple-names, file-input, dropzone, guest-name, guest-message, upload-submit all present, protected routes /dashboard and /admin redirect unauth to /login.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "RestaurantDashboard 'New wedding' dialog", "issues": ["'wedding-date' uses native browser type=date picker instead of shadcn Calendar/DatePicker component"]},
+      {"screen": "Dialogs (New wedding, QR)", "issues": ["Console warning: Missing Description or aria-describedby for {DialogContent} - a11y issue, add DialogDescription"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wedsnap_backend.py",
+    "/app/test_reports/pytest/wedsnap_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Replace native <input type=date> with shadcn Calendar/DatePicker for consistent styling.",
+    "OPTIONAL: Add DialogDescription (or aria-describedby) to shadcn DialogContent components to silence a11y warnings.",
+    "OPTIONAL: EmailStr validator rejects .test / .local TLDs (e.g., 422 on TEST_...@wedsnap.test). Considered acceptable since real users won't hit this, but couple auto-create with such an email would silently fail validation earlier."
+  ],
+  "critical_code_review_comments": [
+    "server.py 640+ lines is fine but growing; consider splitting into routers (auth, weddings, gallery, admin) as it grows.",
+    "storage.py init_storage() uses a global storage_key without a lock. Under concurrent uploads this is race-prone; fine for MVP.",
+    "wedding_public/upload_public correctly omit MongoDB _id.",
+    "set_auth_cookies uses secure=True + samesite=none which requires HTTPS (works in preview) - correct for prod.",
+    "guest_upload trusts client content_type but also enforces via extension + size limits per media type - good.",
+    "Admin route PATCH /admin/restaurants updates status but there is no dedicated 'audit_logs' viewer endpoint - not required for MVP.",
+    "No rate limiting / brute-force lockout on /auth/login (playbook mentions 5-fail lockout). Consider adding for production."
+  ],
+  "updated_files": ["/app/backend/tests/test_wedsnap_backend.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin zx31808@seeu.edu.mk/Admin@2026, Restaurant venue@wedsnap.com/Venue@2026, demo wedding slug=cec8f84007",
+  "seed_data_creation": "Created TEST_ prefixed weddings/messages/uploads via API and UI (approx 2 extra weddings + 1 message + 1 photo). Non-destructive; can be pruned later.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 28 backend tests in test_wedsnap_backend.py pass. Restaurant gallery lives inside /dashboard/wedding/{slug} (not a separate route). Guest file-input is an intentionally hidden <input> - use set_input_files with state='attached' or click the dropzone label. AuthedMedia loads media via /api/files/{id} using cookies; may briefly show placeholder tiles before image loads."
+}
