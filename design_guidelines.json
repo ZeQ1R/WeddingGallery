@@ -1,0 +1,104 @@
+{
+  "theme": "light",
+  "typography": {
+    "headings": {
+      "font": "Cormorant Garamond",
+      "import_url": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap",
+      "rules": "Use for all H1-H3. Tight letter spacing (`tracking-tight`). Never use generic sans for headings. Emphasize elegance with font-light or font-medium."
+    },
+    "body": {
+      "font": "Manrope",
+      "import_url": "https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap",
+      "rules": "Use for all body text, buttons, and UI elements. Ensure high legibility with generous line-height (`leading-relaxed`)."
+    }
+  },
+  "colors": {
+    "background": {
+      "main": "#FDFBF7",
+      "card": "#FFFFFF",
+      "overlay": "rgba(253, 251, 247, 0.8)"
+    },
+    "primary": {
+      "main": "#C5A059",
+      "hover": "#B38F4D",
+      "light": "#F4EFE6",
+      "foreground": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#1A1A1A",
+      "secondary": "#5C5C5C",
+      "muted": "#999999"
+    },
+    "border": {
+      "subtle": "#E8E6E1",
+      "strong": "#D4AF37"
+    },
+    "rules": "Avoid pure black and pure white where possible (except for cards). Use the Soft Beige (#FDFBF7) as the canvas. Gold (#C5A059) is for primary actions and elegant accents."
+  },
+  "surfaces": {
+    "cards": "Highly rounded corners (`rounded-3xl`). Soft ambient shadows (`shadow-[0_8px_30px_rgba(0,0,0,0.04)]`). 1px delicate border (`border-[#E8E6E1]`).",
+    "glassmorphism": "Used for sticky headers and floating action buttons. `backdrop-blur-xl bg-white/70 border border-white/40 shadow-sm`. NEVER use fully transparent backgrounds where text readability is at risk.",
+    "buttons": "Pill-shaped (`rounded-full`). Primary buttons use Gold background with White text and a subtle shadow (`shadow-md shadow-[#C5A059]/20`). Secondary buttons use White background with Gold border and Gold text.",
+    "inputs": "Minimalist. `bg-transparent border-b border-[#E8E6E1] rounded-none focus:border-[#C5A059] focus:ring-0` OR fully rounded pill-shaped inputs with soft `#F4EFE6` backgrounds."
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Use 2-3x more spacing than default. E.g., `p-8` to `p-12` for card padding, `gap-8` or `gap-12` for grids. Let the content breathe.",
+    "guest_upload_page": "Mobile-first, full-height (`min-h-screen`). Centered, emotional typography. Large, inviting dropzone for uploads spanning almost full width. Keep steps minimal: Scan -> Enter Name -> Tap to Upload.",
+    "dashboards": "Clean sidebar with Gold active states. Grid layout (`grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6`) for metrics. Use 'Bento Grid' style for the Bride & Groom gallery view.",
+    "gallery": "Masonry layout for photos. Subtle hover state to slightly dim the image and show a 'favorite' heart icon."
+  },
+  "motion": {
+    "rules": "Smooth, deliberate animations. Use Framer Motion for page transitions (`opacity: 0` to `opacity: 1`, `y: 10` to `y: 0`). Micro-interactions on buttons (scale down slightly on tap). Staggered entrance for gallery images.",
+    "libraries": ["framer-motion"]
+  },
+  "components": {
+    "upload_zone": "A large area with `bg-white/50`, soft rounded corners (`rounded-3xl`), and a dashed border (`border-2 border-dashed border-[#C5A059]/30`). On drag hover, change border to solid Gold and background to `#F4EFE6`. Include a prominent, elegant upload icon.",
+    "gallery_grid": "Masonry or balanced Bento grid. Images should have `rounded-xl` and a subtle hover effect (zoom slightly with `scale-105` inside a hidden overflow container).",
+    "timeline_view": "Vertical line with dots. Elegant spacing. Dates in small serif, events in sans-serif.",
+    "shadcn_overrides": "Override Shadcn's default sharp edges. Add `rounded-3xl` or `rounded-2xl` to dialogs and cards. Change ring colors to Gold. Do not use default Vercel styles.",
+    "icons": "Use Phosphor Icons (`@phosphor-icons/react`) with 'light' or 'thin' weight for an elegant touch."
+  },
+  "images": {
+    "rules": "Use these strictly for the landing page placeholders, login backgrounds, or default state avatars. Never use placeholder services.",
+    "urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1718463384055-738905bdd16e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwyfHxsdXh1cnklMjB3ZWRkaW5nJTIwcmVjZXB0aW9ufGVufDB8fHx8MTc4NjMxMTAxMHww&ixlib=rb-4.1.0&q=85",
+        "description": "Elegant luxury wedding table setting with candles",
+        "category": "Hero Background / Auth Page Background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1603513388359-08db2ed75f1b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHw0fHxlbGVnYW50JTIwY2hhbXBhZ25lJTIwdGV4dHVyZXxlbnwwfHx8fDE3ODYzMTEwMTB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Soft beige/champagne texture",
+        "category": "Card Background Accents or Banner Patterns"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1561287495-a3fe1fd28504?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHw0fHxjb3VwbGUlMjBob2xkaW5nJTIwaGFuZHMlMjBzdW5zZXR8ZW58MHx8fHwxNzg2MzExMDEwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Couple holding hands",
+        "category": "Placeholder for Bride & Groom gallery or profile"
+      }
+    ]
+  },
+  "general_instructions": [
+    "NEVER use generic fonts like Inter or Roboto. Use Cormorant Garamond for headings and Manrope for body.",
+    "The guest upload page must feel like a premium invitation. Scan -> Enter Name -> Tap to Upload.",
+    "Apply `data-testid` to all interactive elements (buttons, inputs, links).",
+    "Install and use Phosphor Icons (`yarn add @phosphor-icons/react`). Use the 'light' weight.",
+    "Do not use dark backgrounds. The theme is light, minimal, luxury. White, Gold, Soft Beige.",
+    "Implement Sonner for toast notifications, styling them with a light background, soft beige text, and gold border.",
+    "Use Shadcn UI but heavily customize the classes to use rounded corners (`rounded-3xl`) and our color palette."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy and soft ambient shadows.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) where appropriate. ALWAYS ensure backgrounds under glassmorphism are not entirely transparent.",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, i.e., do not add `.App { text-align: center; }` in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use `sonner` for toasts."
+  ]
+}
