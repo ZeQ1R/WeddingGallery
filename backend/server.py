@@ -68,6 +68,32 @@ async def send_email(to_email: str, subject: str, html: str):
     return resp.json()
 
 
+def approval_email_html(business_name: str) -> str:
+    login_url = f"{os.environ['FRONTEND_URL']}/login"
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#FDFBF7;padding:32px 0;font-family:Arial,Helvetica,sans-serif">
+      <tr><td align="center">
+        <table width="480" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border:1px solid #E8E6E1;border-radius:24px;overflow:hidden">
+          <tr><td style="background:#1A1A1A;padding:28px 32px" align="center">
+            <span style="color:#C5A059;font-size:26px;font-weight:bold;letter-spacing:1px">WedSnap</span>
+          </td></tr>
+          <tr><td style="padding:40px 40px 8px" align="center">
+            <p style="color:#C5A059;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px">Welcome aboard</p>
+            <h1 style="color:#1A1A1A;font-size:30px;margin:0;font-weight:400">You're approved, {business_name}!</h1>
+            <p style="color:#5C5C5C;font-size:15px;line-height:1.6;margin:20px 0 0">
+              Your venue account is now active. You can create weddings, generate guest QR codes and invite couples to their private galleries.
+            </p>
+          </td></tr>
+          <tr><td style="padding:28px 40px 40px" align="center">
+            <a href="{login_url}" style="display:inline-block;background:#C5A059;color:#FFFFFF;text-decoration:none;padding:15px 40px;border-radius:999px;font-size:16px;font-weight:bold">Go to my dashboard</a>
+          </td></tr>
+        </table>
+        <p style="color:#999999;font-size:12px;margin:20px 0 0">Sent with love by WedSnap</p>
+      </td></tr>
+    </table>
+    """
+
+
 # ---- abuse protection ----
 UPLOAD_RATE_LIMIT = 40          # uploads per window per IP
 UPLOAD_RATE_WINDOW = 60         # seconds
@@ -302,6 +328,7 @@ async def accept_invite(token: str, response: Response):
     if exp and datetime.fromisoformat(exp) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="This invitation has expired. Ask the venue to resend it.")
     uid = str(couple["_id"])
+    await db.users.update_one({"_id": couple["_id"]}, {"$set": {"invite_opened_at": now_iso()}})
     access = create_access_token(uid, couple["email"], "couple")
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
@@ -443,6 +470,24 @@ async def wedding_qr(slug: str, user: dict = Depends(require_role("restaurant", 
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
     return {"url": url, "qr_data_url": f"data:image/png;base64,{b64}"}
+
+
+@api_router.get("/weddings/{slug}/invite-status")
+async def invite_status(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+    couple_email = w.get("couple_email")
+    couple = await db.users.find_one({"email": couple_email, "role": "couple"}) if couple_email else None
+    return {
+        "couple_email": couple_email,
+        "invited": bool(couple and couple.get("invite_token")),
+        "opened": bool(couple and couple.get("invite_opened_at")),
+        "opened_at": couple.get("invite_opened_at") if couple else None,
+    }
+
 
 
 @api_router.post("/weddings/{slug}/invite")
@@ -679,7 +724,7 @@ async def delete_upload(upload_id: str, user: dict = Depends(get_current_user)):
 
 
 @api_router.get("/gallery/{slug}/download")
-async def download_all(slug: str, request: Request, auth: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+async def download_all(slug: str, request: Request, favorites: bool = False, auth: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
     token = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization[7:]
@@ -697,7 +742,10 @@ async def download_all(slug: str, request: Request, auth: Optional[str] = Query(
     if not user or not await _can_access_wedding(slug, user):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    items = await db.uploads.find({"wedding_slug": slug, "is_deleted": False}).to_list(2000)
+    q = {"wedding_slug": slug, "is_deleted": False}
+    if favorites:
+        q["is_favorite"] = True
+    items = await db.uploads.find(q).to_list(2000)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for i, u in enumerate(items):
@@ -709,8 +757,9 @@ async def download_all(slug: str, request: Request, auth: Optional[str] = Query(
             except Exception as e:
                 logger.error(f"zip error {e}")
     buf.seek(0)
+    fname = f"{slug}-favorites.zip" if favorites else f"{slug}-memories.zip"
     return StarletteResponse(content=buf.getvalue(), media_type="application/zip",
-                             headers={"Content-Disposition": f'attachment; filename="{slug}-memories.zip"'})
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 # ---------------------------------------------------------------- plans + admin
@@ -782,8 +831,18 @@ async def admin_update_restaurant(rid: str, plan: Optional[str] = Query(None),
         updates["status"] = status
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
+    target = await db.users.find_one({"_id": ObjectId(rid)})
+    was_pending = target and target.get("status") == "pending"
     await db.users.update_one({"_id": ObjectId(rid)}, {"$set": updates})
     await audit(str(user["_id"]), "admin_update_restaurant", f"{rid} -> {updates}")
+    # notify venue on approval (pending -> active)
+    if was_pending and updates.get("status") == "active" and target.get("email"):
+        try:
+            await send_email(target["email"],
+                             "Your WedSnap venue is approved 🎉",
+                             approval_email_html(target.get("business_name") or target.get("name") or "there"))
+        except Exception as e:
+            logger.error(f"approval email failed: {e}")
     return {"message": "updated", **updates}
 
 
@@ -817,6 +876,21 @@ async def startup():
     elif existing["role"] != "admin" or not verify_password(admin_pw, existing["password_hash"]):
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"role": "admin", "password_hash": hash_password(admin_pw)}})
+
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
+
+
+app.include_router(api_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=[os.environ.get("FRONTEND_URL", "*"), "*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("shutdown")

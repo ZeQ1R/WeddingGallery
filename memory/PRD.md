@@ -29,6 +29,11 @@ A SaaS platform so a bride and groom never lose a single wedding memory. Each we
 - Upload Protection: login brute-force lockout (5 fails -> 15 min, 429) and guest-upload rate limit (40/60s per IP), both using X-Forwarded-For for real client IP behind K8s ingress.
 - Luxury UI: Cormorant Garamond + Manrope fonts, gold/beige palette, rounded cards, glass headers, animations.
 
+## Final touches (2026-08-09)
+- Approval email: when admin approves a pending venue (pending -> active), the venue receives a branded "You're approved" email (Resend). Failure to send is logged, never blocks approval.
+- Invite status + resend: GET /weddings/{slug}/invite-status returns {couple_email, invited, opened, opened_at}. accept_invite sets invite_opened_at. WeddingDetail shows a status chip (invited/opened/not invited) and the invite button says "Resend invite" once invited.
+- Selective download: GET /gallery/{slug}/download?favorites=true zips only favorited media; Gallery "Download all" becomes "Download favorites" when the Favorites filter is active.
+
 ## Signup / approval model (2026-08-09)
 - Venues self-register at /register but are created with `status="pending"`. They can log in but cannot create weddings until an admin approves them (create_wedding returns 403 for pending/suspended).
 - Admin approves in the Admin dashboard restaurant table ("Approve" button → sets status active). Admin can also Suspend/Reactivate. `user_public` now returns `status`.

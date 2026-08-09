@@ -56,13 +56,16 @@ export function Gallery({ slug, canDelete = true }) {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
-  const downloadAll = async () => {
+  const downloadAll = async (favoritesOnly = false) => {
     setDownloading(true);
     try {
-      const res = await api.get(`/gallery/${slug}/download`, { responseType: "blob" });
+      const res = await api.get(`/gallery/${slug}/download`, {
+        params: favoritesOnly ? { favorites: true } : {},
+        responseType: "blob",
+      });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
-      a.href = url; a.download = `${slug}-memories.zip`; a.click();
+      a.href = url; a.download = favoritesOnly ? `${slug}-favorites.zip` : `${slug}-memories.zip`; a.click();
       URL.revokeObjectURL(url);
     } catch (e) { toast.error("Could not download gallery"); }
     finally { setDownloading(false); }
@@ -96,9 +99,9 @@ export function Gallery({ slug, canDelete = true }) {
             <Input data-testid="gallery-search" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by guest…" className="rounded-full bg-white border-wed-line focus-visible:ring-wed-gold h-11 pl-10 pr-4 w-48" />
           </div>
-          <Button data-testid="download-all" onClick={downloadAll} disabled={downloading || !items.length}
+          <Button data-testid="download-all" onClick={() => downloadAll(filter === "favorites")} disabled={downloading || !items.length}
             className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11 px-5">
-            <DownloadSimple size={18} className="mr-1.5" /> {downloading ? "Zipping…" : "Download all"}
+            <DownloadSimple size={18} className="mr-1.5" /> {downloading ? "Zipping…" : filter === "favorites" ? "Download favorites" : "Download all"}
           </Button>
         </div>
       </div>

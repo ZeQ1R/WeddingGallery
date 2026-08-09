@@ -15,12 +15,18 @@ export default function WeddingDetail() {
   const [qr, setQr] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState(null);
+
+  const loadInviteStatus = () =>
+    api.get(`/weddings/${slug}/invite-status`).then(({ data }) => setInviteInfo(data)).catch(() => {});
 
   useEffect(() => {
     api.get(`/weddings/${slug}`).then(({ data }) => setWedding(data)).catch((e) => {
       toast.error(formatApiError(e.response?.data?.detail)); navigate("/dashboard");
     });
     api.get(`/weddings/${slug}/qr`).then(({ data }) => setQr(data)).catch(() => {});
+    loadInviteStatus();
+    // eslint-disable-next-line
   }, [slug, navigate]);
 
   const copyLink = () => { if (qr) { navigator.clipboard.writeText(qr.url); toast.success("Link copied"); } };
@@ -44,6 +50,7 @@ export default function WeddingDetail() {
     try {
       const { data } = await api.post(`/weddings/${slug}/invite`);
       toast.success(data.message || "Invitation sent");
+      loadInviteStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setInviting(false); }
   };
@@ -106,7 +113,7 @@ export default function WeddingDetail() {
           <div className="flex flex-wrap gap-2">
             <Button onClick={inviteCouple} disabled={inviting} data-testid="invite-couple"
               className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11">
-              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : "Invite couple"}
+              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : inviteInfo?.invited ? "Resend invite" : "Invite couple"}
             </Button>
             {wedding.status !== "completed" ? (
               <Button onClick={() => setStatus("completed")} data-testid="mark-completed" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11">
@@ -131,13 +138,23 @@ export default function WeddingDetail() {
             messages guests share. As the venue you set up the wedding, share the QR code and invite the couple —
             but their gallery stays completely private to them.
           </p>
-          <div className="inline-flex items-center gap-2 mt-6 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm text-wed-text2">
-            <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} memories collected so far
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm text-wed-text2">
+              <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} memories collected so far
+            </div>
+            {inviteInfo && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm" data-testid="invite-status">
+                <span className={`w-2 h-2 rounded-full ${inviteInfo.opened ? "bg-green-500" : inviteInfo.invited ? "bg-amber-400" : "bg-wed-muted"}`} />
+                <span className="text-wed-text2">
+                  {inviteInfo.opened ? "Couple opened their gallery" : inviteInfo.invited ? "Invite sent — not opened yet" : inviteInfo.couple_email ? "Couple not invited yet" : "No couple email on file"}
+                </span>
+              </div>
+            )}
           </div>
           <div className="mt-8">
             <Button onClick={inviteCouple} disabled={inviting} data-testid="invite-couple-panel"
               className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12 px-8">
-              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : "Invite the couple to their gallery"}
+              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : inviteInfo?.invited ? "Resend invite" : "Invite the couple to their gallery"}
             </Button>
           </div>
         </motion.div>
