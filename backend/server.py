@@ -76,6 +76,13 @@ LOGIN_LOCKOUT_MIN = 15
 _upload_hits = defaultdict(list)
 
 
+def client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def check_upload_rate(ip: str) -> bool:
     now = time.time()
     hits = _upload_hits[ip]
@@ -247,7 +254,7 @@ async def register(data: RegisterInput, response: Response):
 @api_router.post("/auth/login")
 async def login(data: LoginInput, request: Request, response: Response):
     email = data.email.lower().strip()
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     identifier = f"{ip}:{email}"
     now = datetime.now(timezone.utc)
 
@@ -265,6 +272,8 @@ async def login(data: LoginInput, request: Request, response: Response):
         if fails >= LOGIN_MAX_FAILS:
             upd["locked_until"] = (now + timedelta(minutes=LOGIN_LOCKOUT_MIN)).isoformat()
             upd["fails"] = 0
+            await db.login_attempts.update_one({"identifier": identifier}, {"$set": upd}, upsert=True)
+            raise HTTPException(status_code=429, detail=f"Too many attempts. Account locked for {LOGIN_LOCKOUT_MIN} minutes.")
         await db.login_attempts.update_one({"identifier": identifier}, {"$set": upd}, upsert=True)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -484,7 +493,7 @@ async def public_wedding(slug: str):
 
 @api_router.post("/public/wedding/{slug}/upload")
 async def guest_upload(slug: str, request: Request, file: UploadFile = File(...), guest_name: str = Form("")):
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     if not check_upload_rate(ip):
         raise HTTPException(status_code=429, detail="You're uploading very fast — please wait a moment and try again.")
     w = await db.weddings.find_one({"slug": slug})

@@ -24,8 +24,11 @@ A SaaS platform so a bride and groom never lose a single wedding memory. Each we
 - Guest flow (public): landing with couple names/date/venue, multi-file upload (photos+videos), message, thank-you screen. Type + size validation.
 - Gallery (restaurant/couple/admin): grid (masonry), timeline, guestbook views; filter all/photos/videos/favorites; search by guest; favorite toggle; delete; blob-based secure media serving; download-all zip.
 - Admin dashboard: analytics (restaurants, weddings, active, uploads, photos/videos, storage GB, monthly revenue), restaurant table with plan change + suspend/reactivate.
+- Couple Invitations: venue emails couple a secure magic-link (Emergent-managed Resend); /invite/{token} one-tap login into private gallery (30-day token). Clear error on undeliverable/rate-limited email.
+- Live Slideshow: /slideshow/{slug} fullscreen auto-advancing gallery with Ken Burns, play/pause/next/prev, polls every 12s and shows a "New memory" toast for new guest photos. Buttons on wedding detail + couple gallery.
+- Upload Protection: login brute-force lockout (5 fails -> 15 min, 429) and guest-upload rate limit (40/60s per IP), both using X-Forwarded-For for real client IP behind K8s ingress.
 - Luxury UI: Cormorant Garamond + Manrope fonts, gold/beige palette, rounded cards, glass headers, animations.
-- Testing: 28/28 backend pytest pass; frontend Playwright 100%.
+- Testing: backend pytest + frontend Playwright; all three new features verified (invite send 202, magic login, lockout via ingress, slideshow UI 100%).
 
 ## Backlog (not yet built)
 - P1: Real payments (Stripe) for subscriptions; couple invitation email with login link.

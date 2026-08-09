@@ -84,8 +84,15 @@ class TestCoupleInvite:
 # --------------------------------- Magic Login
 class TestMagicLogin:
     def test_accept_invite_valid(self, restaurant_session):
-        # Get a fresh token first
-        r = restaurant_session.post(f"{API}/weddings/{INVITE_SLUG}/invite")
+        # Create a dedicated wedding so parallel tests can't overwrite our token
+        w = restaurant_session.post(f"{API}/weddings", json={
+            "bride_name": "TEST_Magic", "groom_name": "TEST_Login",
+            "wedding_date": "2026-09-05", "venue": "Hall",
+            "couple_email": "delivered@resend.dev",
+        })
+        assert w.status_code == 200, w.text
+        slug = w.json()["slug"]
+        r = restaurant_session.post(f"{API}/weddings/{slug}/invite")
         assert r.status_code == 200
         token = r.json()["link"].split("/invite/")[-1]
 
@@ -119,8 +126,9 @@ class TestLoginLockout:
         for i in range(6):
             r = s.post(f"{API}/auth/login", json={"email": email, "password": "wrong"})
             results.append(r.status_code)
-        # First 5 fails: 401. 6th attempt: should be 429 (lockout activated on 5th write; 6th read triggers lock).
-        assert results[:5] == [401, 401, 401, 401, 401], results
+        # 5 fails accumulate; the 5th attempt trips the lock and returns 429 immediately.
+        assert results[:4] == [401, 401, 401, 401], results
+        assert results[4] == 429, results
         assert results[5] == 429, results
         # Verify message
         r = s.post(f"{API}/auth/login", json={"email": email, "password": "wrong"})
