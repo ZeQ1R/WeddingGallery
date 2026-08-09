@@ -159,6 +159,10 @@ class MessageInput(BaseModel):
     text: str
 
 
+class PasswordInput(BaseModel):
+    password: str
+
+
 # ---------------------------------------------------------------- auth helpers
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -193,6 +197,7 @@ def user_public(user: dict) -> dict:
         "business_name": user.get("business_name"),
         "plan": user.get("plan"),
         "wedding_id": user.get("wedding_id"),
+        "password_set": user.get("password_set", user.get("role") != "couple"),
     }
 
 
@@ -302,6 +307,16 @@ async def accept_invite(token: str, response: Response):
     return user_public(couple)
 
 
+@api_router.post("/auth/set-password")
+async def set_password(data: PasswordInput, user: dict = Depends(get_current_user)):
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    await db.users.update_one({"_id": user["_id"]},
+                              {"$set": {"password_hash": hash_password(data.password), "password_set": True}})
+    await audit(str(user["_id"]), "set_password", f"{user['role']} set/updated password")
+    return {"message": "Password saved. You can now sign in anytime with your email and password."}
+
+
 @api_router.post("/auth/logout")
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
@@ -361,17 +376,16 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
     doc["_id"] = res.inserted_id
     await audit(str(user["_id"]), "create_wedding", f"{data.bride_name} & {data.groom_name}")
 
-    # optionally create a couple account
+    # optionally create a couple account (password set later via invite/set-password)
     if doc["couple_email"]:
         if not await db.users.find_one({"email": doc["couple_email"]}):
-            temp_pw = uuid.uuid4().hex[:8]
             await db.users.insert_one({
                 "name": f"{data.bride_name} & {data.groom_name}",
                 "email": doc["couple_email"],
-                "password_hash": hash_password(temp_pw),
+                "password_hash": hash_password(uuid.uuid4().hex),
                 "role": "couple",
                 "wedding_id": slug,
-                "temp_password": temp_pw,
+                "password_set": False,
                 "created_at": now_iso(),
             })
     return wedding_public(doc)
@@ -442,6 +456,7 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
             "password_hash": hash_password(uuid.uuid4().hex),
             "role": "couple",
             "wedding_id": slug,
+            "password_set": False,
             "created_at": now_iso(),
         })
         couple = await db.users.find_one({"_id": res.inserted_id})
@@ -557,13 +572,10 @@ async def guest_message(slug: str, data: MessageInput):
 
 # ---------------------------------------------------------------- file serving
 async def _can_access_wedding(slug: str, user: dict) -> bool:
+    # Media (photos/videos/messages) is private to the couple. Venues/restaurants
+    # can manage the wedding but can NOT view or download the memories.
     if user["role"] == "admin":
         return True
-    w = await db.weddings.find_one({"slug": slug})
-    if not w:
-        return False
-    if user["role"] == "restaurant":
-        return w["restaurant_id"] == str(user["_id"])
     if user["role"] == "couple":
         return user.get("wedding_id") == slug
     return False

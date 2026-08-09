@@ -45,7 +45,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/wedding/:slug" element={<GuestUpload />} />
             <Route path="/invite/:token" element={<InviteAccept />} />
-            <Route path="/slideshow/:slug" element={<Protected roles={["restaurant", "admin", "couple"]}><Slideshow /></Protected>} />
+            <Route path="/slideshow/:slug" element={<Protected roles={["couple", "admin"]}><Slideshow /></Protected>} />
             <Route path="/dashboard" element={<Protected roles={["restaurant"]}><RestaurantDashboard /></Protected>} />
             <Route path="/dashboard/wedding/:slug" element={<Protected roles={["restaurant", "admin"]}><WeddingDetail /></Protected>} />
             <Route path="/my-gallery" element={<Protected roles={["couple"]}><CoupleGallery /></Protected>} />

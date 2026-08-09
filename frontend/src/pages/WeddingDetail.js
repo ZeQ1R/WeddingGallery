@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, Play } from "@phosphor-icons/react";
+import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, LockKey, Images } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
-import { Gallery } from "@/components/Gallery";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -57,11 +56,6 @@ export default function WeddingDetail() {
       <TopBar title={`${wedding.bride_name} & ${wedding.groom_name}`} subtitle={wedding.venue || "Wedding gallery"}
         right={
           <div className="flex items-center gap-2">
-            <Link to={`/slideshow/${slug}`} data-testid="slideshow-btn">
-              <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent px-4 hidden sm:flex">
-                <Play weight="fill" size={16} className="mr-1.5" /> Slideshow
-              </Button>
-            </Link>
             <Dialog open={qrOpen} onOpenChange={setQrOpen}>
             <DialogTrigger asChild>
               <Button data-testid="show-qr-btn" className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5">
@@ -126,7 +120,27 @@ export default function WeddingDetail() {
           </div>
         </motion.div>
 
-        <Gallery slug={slug} canDelete={true} />
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          className="rounded-3xl bg-wed-goldLight/40 border border-wed-line p-10 sm:p-14 text-center" data-testid="privacy-panel">
+          <div className="w-16 h-16 rounded-2xl bg-white border border-wed-line mx-auto flex items-center justify-center mb-6 wed-shadow">
+            <LockKey weight="light" size={30} className="text-wed-gold" />
+          </div>
+          <h3 className="font-serif text-3xl sm:text-4xl font-light">These memories are private</h3>
+          <p className="text-wed-text2 mt-4 max-w-lg mx-auto leading-relaxed">
+            Only {wedding.bride_name} &amp; {wedding.groom_name} can view and download the photos, videos and
+            messages guests share. As the venue you set up the wedding, share the QR code and invite the couple —
+            but their gallery stays completely private to them.
+          </p>
+          <div className="inline-flex items-center gap-2 mt-6 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm text-wed-text2">
+            <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} memories collected so far
+          </div>
+          <div className="mt-8">
+            <Button onClick={inviteCouple} disabled={inviting} data-testid="invite-couple-panel"
+              className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12 px-8">
+              <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : "Invite the couple to their gallery"}
+            </Button>
+          </div>
+        </motion.div>
       </main>
     </div>
   );

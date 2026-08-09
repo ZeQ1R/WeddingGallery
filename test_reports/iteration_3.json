@@ -1,0 +1,25 @@
+{
+  "summary": "Privacy overhaul verified end-to-end. Backend: 14/14 privacy pytest passing — venue is 403 on /gallery, /gallery/{slug}/messages, /gallery/{slug}/download, /files/{id}; venue is 200 on /weddings/{slug} and /weddings/{slug}/qr. Couple (aria.leo) is 200 on all media endpoints and sees 5 photos + messages. Admin allowed. /auth/set-password enforces >=6 chars and requires auth. Frontend: couple login lands on /my-gallery, shows 5 photos, guestbook tab, couple-slideshow-btn + account-password-btn present, set-password-form dialog opens with new-password/confirm-password/save-password testids. Venue on /dashboard/wedding/cec8f84007 shows privacy-panel (no gallery), memory count '5 memories collected so far', QR + Invite buttons, and NO slideshow button. Venue navigating to /slideshow/cec8f84007 is redirected to /dashboard. First-time invite E2E: /invite/{token} in fresh context redirects to /my-gallery, auto-opens create-password dialog, saving a password (>=6) succeeds, and the couple can then sign in at /login with email+password.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_privacy.py",
+    "/app/test_reports/pytest/privacy_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_can_access_wedding() is cleanly restricted to admin + owning couple — venue explicitly excluded. Good.",
+    "/api/files/{id} and /api/gallery/{slug}/download both re-authenticate manually (header/query/cookie) and then call _can_access_wedding — consistent and enforces privacy on media URLs used by <img src> too.",
+    "/api/auth/set-password enforces min-6 and updates password_set=true; user_public() now surfaces password_set so the frontend can auto-prompt first-time couples.",
+    "InviteAccept.js correctly navigates to /my-gallery which then checks password_set on /auth/me to auto-open the create-password modal — verified working end-to-end.",
+    "Slideshow route restricted to couple+admin at the router level in App.js — venue is bounced back to /dashboard as observed.",
+    "Prior iteration_2 issue (login lockout / upload rate-limit using request.client.host under K8s ingress) is unrelated to this change but still open — not re-tested here."
+  ],
+  "updated_files": ["/app/backend/tests/test_privacy.py (new)"],
+  "success_rate": {"backend": "100% (14/14 privacy tests)", "frontend": "100%"},
+  "test_credentials": "Admin zx31808@seeu.edu.mk/Admin@2026; Restaurant venue@wedsnap.com/Venue@2026; Couple aria.leo@example.com/Couple@2026 (slug cec8f84007); use delivered@resend.dev as couple_email for invite deliverability.",
+  "seed_data_creation": "Created a handful of TEST_FE_* / TEST_SetP weddings (couple_email test_*@resend.dev) during set-password + invite E2E flows. Non-destructive; prunable by TEST_ prefix on bride_name.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New backend test file /app/backend/tests/test_privacy.py covers all privacy invariants (venue 403 on media, couple/admin 200, set-password auth+validation, full invite→set-password→login round trip). Frontend flows verified via Playwright with cookies. Old iteration_2 open item (X-Forwarded-For for lockout/upload rate-limit) still outstanding but out of scope for this iteration."
+}

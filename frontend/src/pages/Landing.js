@@ -58,7 +58,7 @@ export default function Landing() {
             </Link>
             <Link to="/login">
               <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold hover:bg-wed-goldLight h-12 px-8 text-base bg-transparent">
-                Venue sign in
+                Sign in
               </Button>
             </Link>
           </motion.div>
