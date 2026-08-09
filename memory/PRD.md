@@ -28,6 +28,11 @@ A SaaS platform so a bride and groom never lose a single wedding memory. Each we
 - Live Slideshow: /slideshow/{slug} fullscreen auto-advancing gallery with Ken Burns, play/pause/next/prev, polls every 12s and shows a "New memory" toast for new guest photos. Buttons on wedding detail + couple gallery.
 - Upload Protection: login brute-force lockout (5 fails -> 15 min, 429) and guest-upload rate limit (40/60s per IP), both using X-Forwarded-For for real client IP behind K8s ingress.
 - Luxury UI: Cormorant Garamond + Manrope fonts, gold/beige palette, rounded cards, glass headers, animations.
+
+## Privacy model (2026-08-09)
+- Guest photos/videos/messages are PRIVATE to the couple. `_can_access_wedding` allows only the owning couple + admin; the venue/restaurant is 403 on /gallery, /gallery/{slug}/messages, /files/{id}, favorite, delete, and /gallery/{slug}/download.
+- Venue retains wedding management only: create, list, detail metadata (incl. memory count), QR generate/download, invite couple, status toggle. WeddingDetail shows a privacy panel instead of the gallery; no slideshow button for venue.
+- Couples have their OWN password: couple docs start with `password_set=false`; first magic-link entry auto-prompts a create-password dialog (POST /auth/set-password). Afterwards couples sign in anytime at /login with email+password and can change it via the Password button. Slideshow is couple/admin only.
 - Testing: backend pytest + frontend Playwright; all three new features verified (invite send 202, magic login, lockout via ingress, slideshow UI 100%).
 
 ## Backlog (not yet built)
