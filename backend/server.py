@@ -214,12 +214,16 @@ def create_refresh_token(user_id: str) -> str:
 
 def set_auth_cookies(response: Response, access: str, refresh: str):
     secure_cookies = os.environ.get("ENV", "development") != "development"
+    # Browsers reject SameSite=None cookies unless they are also Secure. Local
+    # HTTP development therefore needs Lax; production's cross-site frontend
+    # continues to use None with Secure.
+    same_site = "none" if secure_cookies else "lax"
     response.set_cookie(
         "access_token",
         access,
         httponly=True,
         secure=secure_cookies,
-        samesite="none",
+        samesite=same_site,
         max_age=43200,
         path="/",
     )
@@ -228,7 +232,7 @@ def set_auth_cookies(response: Response, access: str, refresh: str):
         refresh,
         httponly=True,
         secure=secure_cookies,
-        samesite="none",
+        samesite=same_site,
         max_age=604800,
         path="/",
     )
@@ -542,6 +546,16 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
                               {"$set": {"invite_token": token, "invite_expires": expires, "wedding_id": slug}})
 
     link = f"{os.environ['FRONTEND_URL']}/invite/{token}"
+    if not EMAIL_KEY:
+        if os.environ.get("ENV", "development") == "development":
+            logger.info("Email is not configured; created local invite link for %s", couple_email)
+            await audit(str(user["_id"]), "invite_couple", f"Created local invite link for {couple_email} to {slug}")
+            return {
+                "message": "Email is not configured locally. The invitation link is ready to share.",
+                "link": link,
+                "email_sent": False,
+            }
+        raise HTTPException(status_code=503, detail="Email delivery is not configured. Set EMERGENT_EMAIL_KEY to send invitations.")
     try:
         await send_email(couple_email,
                          f"Your wedding gallery — {w['bride_name']} & {w['groom_name']}",
@@ -558,7 +572,7 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
         logger.error(f"invite email failed: {e}")
         raise HTTPException(status_code=502, detail="Could not send the invitation email. Please try again.")
     await audit(str(user["_id"]), "invite_couple", f"Invited {couple_email} to {slug}")
-    return {"message": f"Invitation sent to {couple_email}", "link": link}
+    return {"message": f"Invitation sent to {couple_email}", "link": link, "email_sent": True}
 
 
 # ---------------------------------------------------------------- public (guest) endpoints

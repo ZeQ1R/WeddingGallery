@@ -49,7 +49,12 @@ export default function WeddingDetail() {
     setInviting(true);
     try {
       const { data } = await api.post(`/weddings/${slug}/invite`);
-      toast.success(data.message || "Invitation sent");
+      if (data.email_sent === false) {
+        try { await navigator.clipboard.writeText(data.link); } catch {}
+        toast.info("Email isn't configured locally. The invitation link was copied to your clipboard.");
+      } else {
+        toast.success(data.message || "Invitation sent");
+      }
       loadInviteStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setInviting(false); }
