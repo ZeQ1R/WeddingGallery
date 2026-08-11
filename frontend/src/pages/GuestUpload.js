@@ -47,7 +47,7 @@ export default function GuestUpload() {
       fd.append("file", item.file);
       fd.append("guest_name", guestName);
       try {
-        await api.post(`/public/wedding/${slug}/upload`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        await api.post(`/public/wedding/${slug}/upload`, fd);
         setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, status: "done" } : f)));
         success++;
       } catch (e) {

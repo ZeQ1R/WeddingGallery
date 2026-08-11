@@ -28,6 +28,9 @@ from bson import ObjectId
 
 import storage
 
+from dotenv import load_dotenv
+
+load_dotenv()
 # ---------------------------------------------------------------- setup
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -210,8 +213,25 @@ def create_refresh_token(user_id: str) -> str:
 
 
 def set_auth_cookies(response: Response, access: str, refresh: str):
-    response.set_cookie("access_token", access, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
-    response.set_cookie("refresh_token", refresh, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+    secure_cookies = os.environ.get("ENV", "development") != "development"
+    response.set_cookie(
+        "access_token",
+        access,
+        httponly=True,
+        secure=secure_cookies,
+        samesite="none",
+        max_age=43200,
+        path="/",
+    )
+    response.set_cookie(
+        "refresh_token",
+        refresh,
+        httponly=True,
+        secure=secure_cookies,
+        samesite="none",
+        max_age=604800,
+        path="/",
+    )
 
 
 def user_public(user: dict) -> dict:
@@ -587,7 +607,11 @@ async def guest_upload(slug: str, request: Request, file: UploadFile = File(...)
         raise HTTPException(status_code=400, detail=f"File too large. Max {limit}MB for {media_type}s.")
 
     path = f"{storage.APP_NAME}/{slug}/{uuid.uuid4().hex}.{ext}"
-    result = storage.put_object(path, data, file.content_type or "application/octet-stream")
+    try:
+        result = storage.put_object(path, data, file.content_type or "application/octet-stream")
+    except Exception as e:
+        logger.error(f"upload failed for wedding={slug}, file={file.filename}, error={e}")
+        raise HTTPException(status_code=502, detail="Could not save uploaded file. Please try again.")
 
     upload_id = str(uuid.uuid4())
     await db.uploads.insert_one({
@@ -595,7 +619,7 @@ async def guest_upload(slug: str, request: Request, file: UploadFile = File(...)
         "wedding_slug": slug,
         "storage_path": result["path"],
         "media_type": media_type,
-        "content_type": file.content_type,
+        "content_type": file.content_type or "application/octet-stream",
         "original_filename": file.filename,
         "size": result.get("size", len(data)),
         "guest_name": guest_name.strip() or "Anonymous",
@@ -877,6 +901,23 @@ async def startup():
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"role": "admin", "password_hash": hash_password(admin_pw)}})
 
+    if os.environ.get("ENV", "development") == "development":
+        demo_slug = "cec8f84007"
+        demo_wedding = await db.weddings.find_one({"slug": demo_slug})
+        if demo_wedding is None:
+            await db.weddings.insert_one({
+                "slug": demo_slug,
+                "bride_name": "Aria",
+                "groom_name": "Leo",
+                "wedding_date": "2026-08-19",
+                "venue": "Elita Terrace",
+                "status": "active",
+                "restaurant_id": str(existing["_id"] if existing else None),
+                "upload_count": 0,
+                "created_at": now_iso(),
+            })
+            logger.info("Demo wedding seeded for local development: %s", demo_slug)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -887,7 +928,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "*"), "*"],
+    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000")],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -896,13 +937,3 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
-
-app.include_router(api_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "*"), "*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)

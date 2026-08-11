@@ -9,7 +9,7 @@ import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function RestaurantDashboard() {
@@ -62,7 +62,10 @@ export default function RestaurantDashboard() {
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-wed-line max-w-md">
-              <DialogHeader><DialogTitle className="font-serif text-3xl font-light">Create a wedding</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle className="font-serif text-3xl font-light">Create a wedding</DialogTitle>
+                <DialogDescription className="text-wed-text2">Add the couple and event details to start their gallery.</DialogDescription>
+              </DialogHeader>
               <form onSubmit={create} className="space-y-4 mt-2" data-testid="create-wedding-form">
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label className="text-wed-text2">Bride</Label>

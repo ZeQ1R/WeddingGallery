@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function WeddingDetail() {
   const { slug } = useParams();
@@ -70,7 +70,10 @@ export default function WeddingDetail() {
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-wed-line max-w-sm text-center">
-              <DialogHeader><DialogTitle className="font-serif text-3xl font-light">Guest QR code</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle className="font-serif text-3xl font-light">Guest QR code</DialogTitle>
+                <DialogDescription className="text-wed-text2">Guests can scan this code to upload photos and videos.</DialogDescription>
+              </DialogHeader>
               {qr ? (
                 <div className="flex flex-col items-center">
                   <div className="rounded-3xl bg-white border border-wed-line p-4 wed-shadow mt-2">

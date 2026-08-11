@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Heart, Trash, DownloadSimple, MagnifyingGlass, ImagesSquare, VideoCamera, Images, ChatCircleDots } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -19,7 +19,7 @@ export function Gallery({ slug, canDelete = true }) {
   const [lightbox, setLightbox] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -31,14 +31,14 @@ export function Gallery({ slug, canDelete = true }) {
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail));
     } finally { setLoading(false); }
-  };
+  }, [filter, search, slug]);
 
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     try { const { data } = await api.get(`/gallery/${slug}/messages`); setMessages(data); } catch {}
-  };
+  }, [slug]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filter, search]);
-  useEffect(() => { loadMessages(); /* eslint-disable-next-line */ }, [slug]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadMessages(); }, [loadMessages]);
 
   const toggleFav = async (id) => {
     try {

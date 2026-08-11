@@ -10,7 +10,7 @@ import { Gallery } from "@/components/Gallery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function CoupleGallery() {
   const { user, refresh } = useAuth();
@@ -76,6 +76,7 @@ export default function CoupleGallery() {
                   <DialogTitle className="font-serif text-3xl font-light">
                     {firstTime ? "Create your password" : "Change your password"}
                   </DialogTitle>
+                  <DialogDescription className="sr-only">Set the password for this gallery account.</DialogDescription>
                 </DialogHeader>
                 <p className="text-wed-text2 text-sm -mt-1">
                   {firstTime
