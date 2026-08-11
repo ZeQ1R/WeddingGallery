@@ -18,7 +18,15 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+
+    // A login or invite opened in another tab can replace the shared httpOnly
+    // cookie. Refresh on return so the visible route matches that session.
+    const syncSession = () => refresh();
+    window.addEventListener("focus", syncSession);
+    return () => window.removeEventListener("focus", syncSession);
+  }, [refresh]);
 
   const login = async (email, password) => {
     try {
