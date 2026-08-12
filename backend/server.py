@@ -56,17 +56,28 @@ PLANS = {
     "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
 }
 
-# ---- email (Emergent-managed Resend) ----
+# ---- email (Resend, with legacy Emergent proxy fallback) ----
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "WedSnap")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", f"{EMAIL_FROM_NAME} <onboarding@resend.dev>")
 
 
 async def send_email(to_email: str, subject: str, html: str):
-    payload = {"to": [to_email], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
     async with httpx.AsyncClient(timeout=30) as c:
-        resp = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
-                            headers={"X-Email-Key": EMAIL_KEY}, json=payload)
+        if RESEND_API_KEY:
+            # Resend's public API is the supported production delivery path.
+            resp = await c.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                json={"from": EMAIL_FROM, "to": [to_email], "subject": subject, "html": html},
+            )
+        else:
+            # Compatibility for environments already configured with the old proxy.
+            payload = {"to": [to_email], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+            resp = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
+                                headers={"X-Email-Key": EMAIL_KEY}, json=payload)
     resp.raise_for_status()
     return resp.json()
 
@@ -180,7 +191,7 @@ class WeddingInput(BaseModel):
     groom_name: str
     wedding_date: str
     venue: Optional[str] = None
-    couple_email: Optional[str] = None
+    couple_email: Optional[EmailStr] = None
 
 
 class MessageInput(BaseModel):
@@ -435,7 +446,9 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
     doc["_id"] = res.inserted_id
     await audit(str(user["_id"]), "create_wedding", f"{data.bride_name} & {data.groom_name}")
 
-    # optionally create a couple account (password set later via invite/set-password)
+    # Optionally create a couple account and send its private-gallery invitation.
+    # A failed delivery must not undo the newly created wedding.
+    invite_result = None
     if doc["couple_email"]:
         if not await db.users.find_one({"email": doc["couple_email"]}):
             await db.users.insert_one({
@@ -447,7 +460,15 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
                 "password_set": False,
                 "created_at": now_iso(),
             })
-    return wedding_public(doc)
+        try:
+            invite_result = await prepare_and_send_invite(doc)
+        except HTTPException as e:
+            logger.warning("Initial couple invite was not delivered for wedding=%s: %s", slug, e.detail)
+            invite_result = {"email_sent": False, "delivery_error": e.detail}
+    result = wedding_public(doc)
+    if invite_result:
+        result["invite"] = invite_result
+    return result
 
 
 @api_router.get("/weddings")
@@ -478,6 +499,33 @@ async def update_wedding_status(slug: str, status: str = Query(...), user: dict 
         raise HTTPException(status_code=403, detail="Not your wedding")
     await db.weddings.update_one({"slug": slug}, {"$set": {"status": status}})
     return {"message": "updated", "status": status}
+
+
+@api_router.delete("/weddings/{slug}")
+async def delete_wedding(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    """Permanently remove one wedding and all of its private gallery data."""
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+
+    uploads = await db.uploads.find({"wedding_slug": slug}).to_list(10000)
+    for upload in uploads:
+        path = upload.get("storage_path")
+        if path:
+            try:
+                storage.delete_object(path)
+            except Exception as e:
+                # Continue removing database records so a deleted gallery can never be accessed.
+                logger.warning("Could not remove media object for deleted wedding=%s, path=%s: %s", slug, path, e)
+
+    await db.uploads.delete_many({"wedding_slug": slug})
+    await db.messages.delete_many({"wedding_slug": slug})
+    await db.users.delete_many({"role": "couple", "wedding_id": slug})
+    await db.weddings.delete_one({"_id": w["_id"]})
+    await audit(str(user["_id"]), "delete_wedding", f"{w['bride_name']} & {w['groom_name']} ({slug})")
+    return {"message": "Wedding deleted"}
 
 
 @api_router.get("/weddings/{slug}/qr")
@@ -514,13 +562,8 @@ async def invite_status(slug: str, user: dict = Depends(require_role("restaurant
 
 
 
-@api_router.post("/weddings/{slug}/invite")
-async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
-    w = await db.weddings.find_one({"slug": slug})
-    if not w:
-        raise HTTPException(status_code=404, detail="Wedding not found")
-    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
-        raise HTTPException(status_code=403, detail="Not your wedding")
+async def prepare_and_send_invite(w: dict) -> dict:
+    slug = w["slug"]
     couple_email = w.get("couple_email")
     if not couple_email:
         raise HTTPException(status_code=400, detail="Add the couple's email to this wedding first.")
@@ -546,16 +589,15 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
                               {"$set": {"invite_token": token, "invite_expires": expires, "wedding_id": slug}})
 
     link = f"{os.environ['FRONTEND_URL']}/invite/{token}"
-    if not EMAIL_KEY:
+    if not (RESEND_API_KEY or EMAIL_KEY):
         if os.environ.get("ENV", "development") == "development":
             logger.info("Email is not configured; created local invite link for %s", couple_email)
-            await audit(str(user["_id"]), "invite_couple", f"Created local invite link for {couple_email} to {slug}")
             return {
                 "message": "Email is not configured locally. The invitation link is ready to share.",
                 "link": link,
                 "email_sent": False,
             }
-        raise HTTPException(status_code=503, detail="Email delivery is not configured. Set EMERGENT_EMAIL_KEY to send invitations.")
+        raise HTTPException(status_code=503, detail="Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM to send invitations.")
     try:
         await send_email(couple_email,
                          f"Your wedding gallery — {w['bride_name']} & {w['groom_name']}",
@@ -571,8 +613,19 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
     except Exception as e:
         logger.error(f"invite email failed: {e}")
         raise HTTPException(status_code=502, detail="Could not send the invitation email. Please try again.")
-    await audit(str(user["_id"]), "invite_couple", f"Invited {couple_email} to {slug}")
     return {"message": f"Invitation sent to {couple_email}", "link": link, "email_sent": True}
+
+
+@api_router.post("/weddings/{slug}/invite")
+async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+    result = await prepare_and_send_invite(w)
+    await audit(str(user["_id"]), "invite_couple", f"Invited {w['couple_email']} to {slug}")
+    return result
 
 
 # ---------------------------------------------------------------- public (guest) endpoints
@@ -939,10 +992,24 @@ async def shutdown_db_client():
 
 
 app.include_router(api_router)
+configured_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", os.environ.get("FRONTEND_URL", "")).split(",")
+    if origin.strip()
+]
+cors_origins = set()
+for origin in configured_origins:
+    normalized = origin.rstrip("/")
+    cors_origins.add(normalized)
+    cors_origins.add(f"{normalized}/")
+cors_origins.update({
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+})
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=sorted(cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
