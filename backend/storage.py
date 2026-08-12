@@ -1,31 +1,34 @@
-import io
 import mimetypes
 import os
-import requests
 from pathlib import Path
 
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import requests
+
 APP_NAME = "wedsnap"
+
+CLOUDINARY_CLOUD_NAME = os.environ.get("rglsmfw7")
+CLOUDINARY_API_KEY = os.environ.get("179191925451333")
+CLOUDINARY_API_SECRET = os.environ.get("U-U2ZWVVT48TdCeMeJyeZ6821vQ")
+
+USE_CLOUDINARY = bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+
+if USE_CLOUDINARY:
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 LOCAL_STORAGE_DIR = Path(os.environ.get("LOCAL_STORAGE_DIR", Path(__file__).resolve().parent / "uploads"))
 LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-USE_LOCAL_STORAGE = not bool(EMERGENT_KEY)
-
-storage_key = None
 
 
 def init_storage(force: bool = False):
-    global storage_key
-    if USE_LOCAL_STORAGE:
-        return "local"
-    if storage_key and not force:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    return "cloudinary" if USE_CLOUDINARY else "local"
 
 
 def _local_path(path: str) -> Path:
@@ -34,73 +37,62 @@ def _local_path(path: str) -> Path:
     return local_path
 
 
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    if USE_LOCAL_STORAGE:
-        local_path = _local_path(path)
-        with open(local_path, "wb") as f:
-            f.write(data)
-        return {"path": path}
+def _resource_type(content_type: str) -> str:
+    if content_type.startswith("video/"):
+        return "video"
+    if content_type.startswith("image/"):
+        return "image"
+    return "raw"
 
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data,
-        timeout=120,
-    )
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.put(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key, "Content-Type": content_type},
-            data=data,
-            timeout=120,
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if USE_CLOUDINARY:
+        result = cloudinary.uploader.upload(
+            data,
+            public_id=path,
+            resource_type=_resource_type(content_type),
+            overwrite=True,
         )
-    resp.raise_for_status()
-    return resp.json()
+        return {"path": path, "size": result.get("bytes", len(data))}
+
+    local_path = _local_path(path)
+    with open(local_path, "wb") as f:
+        f.write(data)
+    return {"path": path, "size": len(data)}
 
 
 def get_object(path: str):
-    if USE_LOCAL_STORAGE:
-        local_path = _local_path(path)
-        if not local_path.exists():
-            raise FileNotFoundError(f"Local object not found: {path}")
-        with open(local_path, "rb") as f:
-            content = f.read()
-        content_type = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
-        return content, content_type
+    if USE_CLOUDINARY:
+        for resource_type in ("image", "video", "raw"):
+            try:
+                info = cloudinary.api.resource(path, resource_type=resource_type)
+                url = info["secure_url"]
+                resp = requests.get(url, timeout=30)
+                if resp.status_code == 200:
+                    content_type = resp.headers.get("Content-Type") or mimetypes.guess_type(path)[0] or "application/octet-stream"
+                    return resp.content, content_type
+            except cloudinary.exceptions.NotFound:
+                continue
+        raise FileNotFoundError(f"Cloudinary object not found: {path}")
 
-    key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key},
-        timeout=60,
-    )
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.get(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key},
-            timeout=60,
-        )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    local_path = _local_path(path)
+    if not local_path.exists():
+        raise FileNotFoundError(f"Local object not found: {path}")
+    with open(local_path, "rb") as f:
+        content = f.read()
+    content_type = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
+    return content, content_type
 
 
 def delete_object(path: str) -> None:
-    """Remove an object when its parent gallery is permanently deleted."""
-    if USE_LOCAL_STORAGE:
-        local_path = LOCAL_STORAGE_DIR / path
-        if local_path.exists():
-            local_path.unlink()
+    if USE_CLOUDINARY:
+        for resource_type in ("image", "video", "raw"):
+            try:
+                cloudinary.uploader.destroy(path, resource_type=resource_type)
+            except Exception:
+                pass
         return
 
-    key = init_storage()
-    resp = requests.delete(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key},
-        timeout=60,
-    )
-    if resp.status_code == 404:
-        return
-    resp.raise_for_status()
+    local_path = LOCAL_STORAGE_DIR / path
+    if local_path.exists():
+        local_path.unlink()
