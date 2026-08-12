@@ -589,15 +589,15 @@ async def prepare_and_send_invite(w: dict) -> dict:
                               {"$set": {"invite_token": token, "invite_expires": expires, "wedding_id": slug}})
 
     link = f"{os.environ['FRONTEND_URL']}/invite/{token}"
+
     if not (RESEND_API_KEY or EMAIL_KEY):
-        if os.environ.get("ENV", "development") == "development":
-            logger.info("Email is not configured; created local invite link for %s", couple_email)
-            return {
-                "message": "Email is not configured locally. The invitation link is ready to share.",
-                "link": link,
-                "email_sent": False,
-            }
-        raise HTTPException(status_code=503, detail="Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM to send invitations.")
+        logger.info("Email is not configured; created invite link for %s", couple_email)
+        return {
+            "message": "Invite link ready — copy and send it to the couple.",
+            "link": link,
+            "email_sent": False,
+        }
+
     try:
         await send_email(couple_email,
                          f"Your wedding gallery — {w['bride_name']} & {w['groom_name']}",

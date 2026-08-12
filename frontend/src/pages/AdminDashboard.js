@@ -48,9 +48,9 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-wed-bg">
       <TopBar title="Platform admin" subtitle="Analytics & management" />
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Analytics */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-5 gap-4 mb-8 sm:mb-12">
           {(stats ? cards : Array.from({ length: 5 })).map((c, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
               className="rounded-3xl bg-white border border-wed-line p-6 wed-shadow">
@@ -66,7 +66,8 @@ export default function AdminDashboard() {
 
         {/* Restaurants */}
         <h2 className="font-serif text-3xl font-light mb-5">Restaurants</h2>
-        <div className="rounded-3xl bg-white border border-wed-line wed-shadow overflow-hidden" data-testid="restaurant-table">
+        <div className="rounded-3xl bg-white border border-wed-line wed-shadow overflow-x-auto" data-testid="restaurant-table">
+          <div className="min-w-[680px]">
           <div className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-wed-line text-xs uppercase tracking-wider text-wed-muted">
             <div className="col-span-4">Venue</div>
             <div className="col-span-2">Weddings</div>
@@ -110,6 +111,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       </main>
     </div>

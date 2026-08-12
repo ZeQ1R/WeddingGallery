@@ -35,8 +35,10 @@ export default function RestaurantDashboard() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/weddings", form);
-      toast.success("Wedding created");
+      const { data } = await api.post("/weddings", form);
+      if (data.invite?.email_sent) toast.success("Wedding created and invitation sent");
+      else if (data.invite?.delivery_error) toast.warning("Wedding created, but the invitation could not be sent. You can resend it from the wedding page.");
+      else toast.success("Wedding created");
       setOpen(false);
       setForm({ bride_name: "", groom_name: "", wedding_date: "", venue: "", couple_email: "" });
       load();
@@ -84,7 +86,7 @@ export default function RestaurantDashboard() {
                 <div><Label className="text-wed-text2">Couple's email (optional)</Label>
                   <Input data-testid="couple-email" type="email" value={form.couple_email} onChange={upd("couple_email")}
                     className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="couple@email.com" />
-                  <p className="text-xs text-wed-muted mt-1.5">Creates a private gallery login for the couple.</p></div>
+                  <p className="text-xs text-wed-muted mt-1.5">Creates a private gallery login and sends their invitation automatically.</p></div>
                 <Button data-testid="submit-wedding" type="submit" disabled={busy}
                   className="w-full rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12">
                   {busy ? "Creating…" : "Create wedding"}
@@ -94,7 +96,7 @@ export default function RestaurantDashboard() {
           </Dialog>
         } />
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {isPending && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} data-testid="pending-banner"
             className="rounded-3xl bg-wed-goldLight/60 border border-wed-gold/30 p-6 sm:p-7 mb-8 flex items-start gap-4">
@@ -111,14 +113,14 @@ export default function RestaurantDashboard() {
           </motion.div>
         )}
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 sm:mb-10">
           {[
             { l: "Total weddings", v: stats.total, icon: Sparkle },
             { l: "Active now", v: stats.active, icon: CalendarBlank },
             { l: "Memories captured", v: stats.uploads, icon: Images },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-              className="rounded-3xl bg-white border border-wed-line p-6 wed-shadow">
+              className="rounded-3xl bg-white border border-wed-line p-5 sm:p-6 wed-shadow">
               <s.icon weight="light" size={24} className="text-wed-gold mb-3" />
               <p className="font-serif text-4xl">{s.v}</p>
               <p className="text-wed-muted text-sm mt-1">{s.l}</p>
@@ -127,10 +129,10 @@ export default function RestaurantDashboard() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="mb-6">
-          <TabsList className="rounded-full bg-wed-goldLight/60 p-1">
-            <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-5">All</TabsTrigger>
-            <TabsTrigger value="active" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-5">Active</TabsTrigger>
-            <TabsTrigger value="completed" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-5">Completed</TabsTrigger>
+          <TabsList className="w-full sm:w-auto rounded-full bg-wed-goldLight/60 p-1 grid grid-cols-3 sm:flex h-auto">
+            <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-2 sm:px-5">All</TabsTrigger>
+            <TabsTrigger value="active" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-2 sm:px-5">Active</TabsTrigger>
+            <TabsTrigger value="completed" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-wed-gold px-2 sm:px-5">Completed</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -149,7 +151,7 @@ export default function RestaurantDashboard() {
             {filtered.map((w, i) => (
               <motion.div key={w.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Link to={`/dashboard/wedding/${w.slug}`} data-testid={`wedding-card-${w.slug}`}
-                  className="block rounded-3xl bg-white border border-wed-line p-7 wed-shadow hover:-translate-y-1 transition-transform duration-300 group">
+                  className="block rounded-3xl bg-white border border-wed-line p-5 sm:p-7 wed-shadow hover:-translate-y-1 transition-transform duration-300 group">
                   <div className="flex items-center justify-between mb-4">
                     <span className={`text-xs px-3 py-1 rounded-full ${w.status === "active" ? "bg-green-50 text-green-600" : w.status === "suspended" ? "bg-red-50 text-red-500" : "bg-wed-goldLight text-wed-gold"}`}>
                       {w.status}

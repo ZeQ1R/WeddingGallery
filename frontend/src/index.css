@@ -19,6 +19,8 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+img, video, canvas { max-width: 100%; }
+
 body {
   margin: 0;
   font-family: "Manrope", system-ui, sans-serif;

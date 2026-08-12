@@ -10,7 +10,7 @@ export function TopBar({ title, subtitle, right, backTo }) {
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur-xl bg-wed-bg/70 border-b border-wed-line/60">
-      <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between gap-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 min-h-20 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-4 min-w-0">
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <Heart weight="fill" className="text-wed-gold" size={24} />

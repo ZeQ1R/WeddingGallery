@@ -85,3 +85,22 @@ def get_object(path: str):
         )
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
+def delete_object(path: str) -> None:
+    """Remove an object when its parent gallery is permanently deleted."""
+    if USE_LOCAL_STORAGE:
+        local_path = LOCAL_STORAGE_DIR / path
+        if local_path.exists():
+            local_path.unlink()
+        return
+
+    key = init_storage()
+    resp = requests.delete(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key},
+        timeout=60,
+    )
+    if resp.status_code == 404:
+        return
+    resp.raise_for_status()

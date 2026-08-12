@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, LockKey, Images } from "@phosphor-icons/react";
+import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, LockKey, Images, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function WeddingDetail() {
   const { slug } = useParams();
@@ -15,6 +16,7 @@ export default function WeddingDetail() {
   const [qr, setQr] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [inviteInfo, setInviteInfo] = useState(null);
 
   const loadInviteStatus = () =>
@@ -60,6 +62,16 @@ export default function WeddingDetail() {
     finally { setInviting(false); }
   };
 
+  const deleteWedding = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/weddings/${slug}`);
+      toast.success("Wedding deleted");
+      navigate("/dashboard");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setDeleting(false); }
+  };
+
   if (!wedding) return <div className="min-h-screen flex items-center justify-center bg-wed-bg">
     <div className="w-10 h-10 rounded-full border-2 border-wed-gold border-t-transparent animate-spin" /></div>;
 
@@ -100,38 +112,59 @@ export default function WeddingDetail() {
           </div>
         } />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <Link to="/dashboard" className="inline-flex items-center gap-2 text-wed-text2 hover:text-wed-gold mb-6 text-sm" data-testid="back-link">
           <ArrowLeft size={16} /> All weddings
         </Link>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-3xl bg-white border border-wed-line p-8 wed-shadow mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          className="rounded-3xl bg-white border border-wed-line p-5 sm:p-8 wed-shadow mb-8 sm:mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span className={`text-xs px-3 py-1 rounded-full ${wedding.status === "active" ? "bg-green-50 text-green-600" : wedding.status === "suspended" ? "bg-red-50 text-red-500" : "bg-wed-goldLight text-wed-gold"}`}>{wedding.status}</span>
               <span className="text-wed-muted text-sm">{wedding.upload_count || 0} memories</span>
             </div>
-            <h2 className="font-serif text-4xl font-light">{wedding.bride_name} <span className="text-wed-gold italic">&amp;</span> {wedding.groom_name}</h2>
+            <h2 className="font-serif text-3xl sm:text-4xl font-light break-words">{wedding.bride_name} <span className="text-wed-gold italic">&amp;</span> {wedding.groom_name}</h2>
             <div className="flex flex-wrap gap-4 mt-3 text-sm text-wed-text2">
               <span className="flex items-center gap-1.5"><CalendarBlank size={15} className="text-wed-gold" /> {wedding.wedding_date ? new Date(wedding.wedding_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—"}</span>
               {wedding.venue && <span className="flex items-center gap-1.5"><MapPin size={15} className="text-wed-gold" /> {wedding.venue}</span>}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full md:w-auto">
             <Button onClick={inviteCouple} disabled={inviting} data-testid="invite-couple"
-              className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11">
+              className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11 w-full sm:w-auto">
               <EnvelopeSimple size={18} className="mr-1.5" /> {inviting ? "Sending…" : inviteInfo?.invited ? "Resend invite" : "Invite couple"}
             </Button>
             {wedding.status !== "completed" ? (
-              <Button onClick={() => setStatus("completed")} data-testid="mark-completed" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11">
+              <Button onClick={() => setStatus("completed")} data-testid="mark-completed" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11 w-full sm:w-auto">
                 <CheckCircle size={18} className="mr-1.5" /> Mark completed
               </Button>
             ) : (
-              <Button onClick={() => setStatus("active")} data-testid="mark-active" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11">
+              <Button onClick={() => setStatus("active")} data-testid="mark-active" variant="outline" className="rounded-full border-wed-gold text-wed-gold bg-transparent h-11 w-full sm:w-auto">
                 Reopen
               </Button>
             )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button data-testid="delete-wedding" variant="outline" className="rounded-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 h-11 w-full sm:w-auto">
+                  <Trash size={18} className="mr-1.5" /> Delete wedding
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="rounded-3xl border-wed-line mx-4">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-serif text-3xl font-light">Delete this wedding?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the wedding, its guest uploads, messages, and couple access. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+                  <AlertDialogCancel className="rounded-full mt-0">Keep wedding</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteWedding} disabled={deleting} className="rounded-full bg-red-600 hover:bg-red-700">
+                    {deleting ? "Deleting…" : "Delete permanently"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </motion.div>
 
