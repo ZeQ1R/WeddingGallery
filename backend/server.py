@@ -627,6 +627,31 @@ async def invite_couple(slug: str, user: dict = Depends(require_role("restaurant
     await audit(str(user["_id"]), "invite_couple", f"Invited {w['couple_email']} to {slug}")
     return result
 
+@api_router.get("/weddings/{slug}/invite-qr")
+async def wedding_invite_qr(slug: str, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+
+    result = await prepare_and_send_invite(w)
+    link = result["link"]
+
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(link)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#1A1A1A", back_color="#FFFFFF")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return {
+        "link": link,
+        "qr_data_url": f"data:image/png;base64,{b64}",
+        "email_sent": result.get("email_sent", False),
+    }
+
 
 # ---------------------------------------------------------------- public (guest) endpoints
 @api_router.get("/public/wedding/{slug}")
