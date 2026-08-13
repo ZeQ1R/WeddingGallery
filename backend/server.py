@@ -668,6 +668,7 @@ async def public_wedding(slug: str):
         "wedding_date": w["wedding_date"],
         "venue": w.get("venue"),
         "status": w.get("status"),
+        "upload_count": w.get("upload_count", 0),
     }
 
 

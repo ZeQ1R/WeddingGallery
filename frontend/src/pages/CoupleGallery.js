@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Heart, Play, LockKey } from "@phosphor-icons/react";
+import { Heart, Play, LockKey, Images } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -25,7 +25,6 @@ export default function CoupleGallery() {
     if (slug) api.get(`/public/wedding/${slug}`).then(({ data }) => setWedding(data)).catch(() => {});
   }, [slug]);
 
-  // First-time couples: prompt to create a password so they can return anytime.
   useEffect(() => {
     if (user && user.password_set === false) setPwdOpen(true);
   }, [user]);
@@ -113,13 +112,20 @@ export default function CoupleGallery() {
         } />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {wedding && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-10">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
             <div className="inline-flex items-center gap-2 rounded-full bg-wed-goldLight px-4 py-1.5 text-xs tracking-widest uppercase text-wed-gold mb-4">
               <Heart weight="fill" size={13} /> Your memories
             </div>
             <h2 className="font-serif text-5xl font-light">{wedding.bride_name} <span className="text-wed-gold italic">&amp;</span> {wedding.groom_name}</h2>
             {wedding.wedding_date && <p className="text-wed-text2 mt-2">{new Date(wedding.wedding_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>}
           </motion.div>
+        )}
+        {wedding && (
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm text-wed-text2">
+              <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} memories collected so far
+            </div>
+          </div>
         )}
         <Gallery slug={slug} canDelete={true} />
       </main>

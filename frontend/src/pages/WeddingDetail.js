@@ -18,6 +18,8 @@ export default function WeddingDetail() {
   const [inviting, setInviting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [inviteInfo, setInviteInfo] = useState(null);
+  const [inviteLink, setInviteLink] = useState(null);
+  const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
 
   const loadInviteStatus = () =>
     api.get(`/weddings/${slug}/invite-status`).then(({ data }) => setInviteInfo(data)).catch(() => {});
@@ -52,14 +54,22 @@ export default function WeddingDetail() {
     try {
       const { data } = await api.post(`/weddings/${slug}/invite`);
       if (data.email_sent === false) {
-        try { await navigator.clipboard.writeText(data.link); } catch {}
-        toast.info("Email isn't configured locally. The invitation link was copied to your clipboard.");
+        setInviteLink(data.link);
+        setInviteLinkOpen(true);
       } else {
         toast.success(data.message || "Invitation sent");
       }
       loadInviteStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setInviting(false); }
+  };
+
+  const copyInviteLink = () => {
+    // Synchronous, inside the click handler — required for mobile Safari/Chrome
+    // to treat this as a trusted user gesture and actually allow the clipboard write.
+    navigator.clipboard.writeText(inviteLink)
+      .then(() => toast.success("Link copied!"))
+      .catch(() => toast.error("Couldn't copy — tap the link below to select it manually."));
   };
 
   const deleteWedding = async () => {
@@ -111,6 +121,37 @@ export default function WeddingDetail() {
           </Dialog>
           </div>
         } />
+
+      <Dialog open={inviteLinkOpen} onOpenChange={setInviteLinkOpen}>
+        <DialogContent className="rounded-3xl border-wed-line max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-3xl font-light">Invite link ready</DialogTitle>
+            <DialogDescription className="text-wed-text2">
+              Email isn't configured — share this link with the couple directly.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            readOnly
+            value={inviteLink || ""}
+            onClick={(e) => e.target.select()}
+            className="w-full text-xs p-3 border border-wed-line rounded-xl mt-2 text-wed-text2"
+          />
+          <div className="flex gap-2 mt-4">
+            <Button onClick={copyInviteLink} className="flex-1 rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-11">
+              <Copy size={18} className="mr-1.5" /> Copy link
+            </Button>
+            {typeof navigator !== "undefined" && navigator.share && (
+              <Button
+                onClick={() => navigator.share({ title: "Your private wedding gallery", url: inviteLink })}
+                variant="outline"
+                className="flex-1 rounded-full border-wed-gold text-wed-gold bg-transparent h-11"
+              >
+                Share
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <Link to="/dashboard" className="inline-flex items-center gap-2 text-wed-text2 hover:text-wed-gold mb-6 text-sm" data-testid="back-link">
