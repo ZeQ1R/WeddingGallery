@@ -41,9 +41,11 @@ export default function AdminDashboard() {
     { l: "Restaurants", v: stats.total_restaurants, icon: Buildings },
     { l: "Weddings", v: `${stats.total_weddings}`, sub: `${stats.active_weddings} active`, icon: Confetti },
     { l: "Total uploads", v: stats.total_uploads, sub: `${stats.photos} photos · ${stats.videos} videos`, icon: Images },
-    { l: "Storage used", v: `${stats.storage_gb} GB`, icon: HardDrives },
     { l: "Monthly revenue", v: `$${stats.monthly_revenue.toLocaleString()}`, icon: CurrencyDollar },
   ] : [];
+
+  const storagePct = stats ? Math.min(stats.storage_percent_used, 100) : 0;
+  const storageBarColor = storagePct > 75 ? "bg-red-500" : storagePct > 50 ? "bg-amber-400" : "bg-wed-gold";
 
   return (
     <div className="min-h-screen bg-wed-bg">
@@ -51,7 +53,7 @@ export default function AdminDashboard() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Analytics */}
         <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-5 gap-4 mb-8 sm:mb-12">
-          {(stats ? cards : Array.from({ length: 5 })).map((c, i) => (
+          {(stats ? cards : Array.from({ length: 4 })).map((c, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
               className="rounded-3xl bg-white border border-wed-line p-6 wed-shadow">
               {c ? (<>
@@ -62,6 +64,20 @@ export default function AdminDashboard() {
               </>) : <div className="h-20 shimmer rounded-xl" />}
             </motion.div>
           ))}
+
+          {/* Storage card with usage bar */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}
+            className="rounded-3xl bg-white border border-wed-line p-6 wed-shadow">
+            {stats ? (<>
+              <HardDrives weight="light" size={24} className="text-wed-gold mb-3" />
+              <p className="font-serif text-3xl leading-none">{stats.storage_gb} GB</p>
+              <p className="text-wed-muted text-sm mt-1.5">Storage used</p>
+              <div className="w-full h-2 bg-wed-goldLight/60 rounded-full overflow-hidden mt-3">
+                <div className={`h-full rounded-full ${storageBarColor}`} style={{ width: `${storagePct}%` }} />
+              </div>
+              <p className="text-wed-muted text-xs mt-1.5">{stats.storage_percent_used}% of {stats.storage_limit_gb}GB limit</p>
+            </>) : <div className="h-20 shimmer rounded-xl" />}
+          </motion.div>
         </div>
 
         {/* Restaurants */}

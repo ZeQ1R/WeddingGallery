@@ -56,6 +56,10 @@ PLANS = {
     "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
 }
 
+# ---- storage guardrails (stay safely under Cloudinary's 25GB free-tier ceiling) ----
+STORAGE_HARD_LIMIT_BYTES = 20 * 1024 ** 3   # 20GB — uploads blocked past this, leaves 5GB safety buffer
+STORAGE_WARN_THRESHOLD_BYTES = 15 * 1024 ** 3  # 15GB — you get one alert email when crossed
+
 # ---- email (Resend, with legacy Emergent proxy fallback) ----
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
@@ -370,6 +374,34 @@ async def accept_invite(token: str, response: Response):
     await audit(uid, "accept_invite", "Couple opened gallery via invite link")
     return user_public(couple)
 
+async def get_total_storage_bytes() -> int:
+    agg = await db.uploads.aggregate([
+        {"$match": {"is_deleted": False}},
+        {"$group": {"_id": None, "total": {"$sum": "$size"}}}
+    ]).to_list(1)
+    return agg[0]["total"] if agg else 0
+
+
+async def maybe_send_storage_warning(current_bytes: int):
+    """Send one warning email when crossing the threshold, not on every upload after."""
+    if current_bytes < STORAGE_WARN_THRESHOLD_BYTES:
+        return
+    flag = await db.system_flags.find_one({"key": "storage_warning_sent"})
+    if flag:
+        return
+    try:
+        await send_email(
+            os.environ["ADMIN_EMAIL"],
+            "WedSnap storage approaching limit",
+            f"<p>Total gallery storage has crossed {STORAGE_WARN_THRESHOLD_BYTES / (1024**3):.0f}GB "
+            f"(currently {current_bytes / (1024**3):.2f}GB). Uploads will be blocked at "
+            f"{STORAGE_HARD_LIMIT_BYTES / (1024**3):.0f}GB. Consider upgrading Cloudinary or clearing old weddings.</p>"
+        )
+    except Exception as e:
+        logger.error(f"storage warning email failed: {e}")
+    await db.system_flags.update_one(
+        {"key": "storage_warning_sent"}, {"$set": {"key": "storage_warning_sent", "sent_at": now_iso()}}, upsert=True
+    )
 
 @api_router.post("/auth/set-password")
 async def set_password(data: PasswordInput, user: dict = Depends(get_current_user)):
@@ -699,6 +731,14 @@ async def guest_upload(slug: str, request: Request, file: UploadFile = File(...)
     if size_mb > limit:
         raise HTTPException(status_code=400, detail=f"File too large. Max {limit}MB for {media_type}s.")
 
+    current_total = await get_total_storage_bytes()
+    if current_total + len(data) > STORAGE_HARD_LIMIT_BYTES:
+        raise HTTPException(
+            status_code=507,
+            detail="This gallery has reached its storage limit for now. Please try again later or contact the venue.",
+        )
+    await maybe_send_storage_warning(current_total)
+
     path = f"{storage.APP_NAME}/{slug}/{uuid.uuid4().hex}.{ext}"
     try:
         result = storage.put_object(path, data, file.content_type or "application/octet-stream")
@@ -914,6 +954,8 @@ async def admin_analytics(user: dict = Depends(require_role("admin"))):
         "videos": videos,
         "storage_bytes": storage_bytes,
         "storage_gb": round(storage_bytes / (1024 ** 3), 3),
+        "storage_limit_gb": round(STORAGE_HARD_LIMIT_BYTES / (1024 ** 3), 1),
+        "storage_percent_used": round((storage_bytes / STORAGE_HARD_LIMIT_BYTES) * 100, 1) if STORAGE_HARD_LIMIT_BYTES else 0,
         "monthly_revenue": revenue,
     }
 
