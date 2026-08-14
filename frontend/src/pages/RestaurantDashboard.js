@@ -11,6 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const UPLOAD_TIERS = {
+  basic: { label: "Basic — 200 uploads", limit: 200 },
+  pro: { label: "Pro — 500 uploads", limit: 500 },
+  premium: { label: "Premium — 600 uploads", limit: 600 },
+};
 
 export default function RestaurantDashboard() {
   const { user } = useAuth();
@@ -19,7 +26,7 @@ export default function RestaurantDashboard() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ bride_name: "", groom_name: "", wedding_date: "", venue: "", couple_email: "" });
+  const [form, setForm] = useState({ bride_name: "", groom_name: "", wedding_date: "", venue: "", couple_email: "", upload_tier: "basic" });
   const [busy, setBusy] = useState(false);
   const upd = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -40,7 +47,7 @@ export default function RestaurantDashboard() {
       else if (data.invite?.delivery_error) toast.warning("Wedding created, but the invitation could not be sent. You can resend it from the wedding page.");
       else toast.success("Wedding created");
       setOpen(false);
-      setForm({ bride_name: "", groom_name: "", wedding_date: "", venue: "", couple_email: "" });
+      setForm({ bride_name: "", groom_name: "", wedding_date: "", venue: "", couple_email: "", upload_tier: "basic" });
       load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setBusy(false); }
@@ -87,6 +94,20 @@ export default function RestaurantDashboard() {
                   <Input data-testid="couple-email" type="email" value={form.couple_email} onChange={upd("couple_email")}
                     className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="couple@email.com" />
                   <p className="text-xs text-wed-muted mt-1.5">Creates a private gallery login and sends their invitation automatically.</p></div>
+                <div>
+                  <Label className="text-wed-text2">Upload plan</Label>
+                  <Select value={form.upload_tier} onValueChange={(v) => setForm({ ...form, upload_tier: v })}>
+                    <SelectTrigger data-testid="upload-tier" className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line h-11 px-4">
+                      <SelectValue>{UPLOAD_TIERS[form.upload_tier]?.label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(UPLOAD_TIERS).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-wed-muted mt-1.5">Guests can't upload past this limit for this wedding.</p>
+                </div>
                 <Button data-testid="submit-wedding" type="submit" disabled={busy}
                   className="w-full rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12">
                   {busy ? "Creating…" : "Create wedding"}
@@ -162,7 +183,7 @@ export default function RestaurantDashboard() {
                   <div className="mt-4 space-y-1.5 text-sm text-wed-text2">
                     <p className="flex items-center gap-2"><CalendarBlank size={15} className="text-wed-gold" /> {w.wedding_date ? new Date(w.wedding_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—"}</p>
                     {w.venue && <p className="flex items-center gap-2"><MapPin size={15} className="text-wed-gold" /> {w.venue}</p>}
-                    <p className="flex items-center gap-2"><Images size={15} className="text-wed-gold" /> {w.upload_count || 0} memories</p>
+                    <p className="flex items-center gap-2"><Images size={15} className="text-wed-gold" /> {w.upload_count || 0} / {w.upload_limit || 200} memories</p>
                   </div>
                 </Link>
               </motion.div>

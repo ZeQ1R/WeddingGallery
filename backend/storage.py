@@ -32,7 +32,7 @@ def init_storage(force: bool = False):
 
 
 def _local_path(path: str) -> Path:
-    local_path = LOCAL_STORAGE_DIR / path
+    local_path = LOCAL_STORAGE_DIR / path   
     local_path.parent.mkdir(parents=True, exist_ok=True)
     return local_path
 
