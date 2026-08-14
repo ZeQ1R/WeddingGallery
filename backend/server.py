@@ -59,6 +59,12 @@ PLANS = {
     "enterprise": {"name": "Enterprise", "price": 499, "max_weddings": 9999, "storage_gb": 2000},
 }
 
+WEDDING_UPLOAD_TIERS = {
+    "basic": 200,
+    "pro": 500,
+    "premium": 600,
+}
+
 # ---- storage guardrails (stay safely under Cloudinary's 25GB free-tier ceiling) ----
 STORAGE_HARD_LIMIT_BYTES = 20 * 1024 ** 3   # 20GB — uploads blocked past this, leaves 5GB safety buffer
 STORAGE_WARN_THRESHOLD_BYTES = 15 * 1024 ** 3  # 15GB — you get one alert email when crossed
@@ -199,6 +205,11 @@ class WeddingInput(BaseModel):
     wedding_date: str
     venue: Optional[str] = None
     couple_email: Optional[EmailStr] = None
+    upload_tier: Optional[str] = "basic"
+
+class UpdateWeddingInput(BaseModel):
+    couple_email: Optional[EmailStr] = None
+    upload_tier: Optional[str] = None
 
 
 class MessageInput(BaseModel):
@@ -448,6 +459,8 @@ def wedding_public(w: dict) -> dict:
         "status": w.get("status", "active"),
         "restaurant_id": w.get("restaurant_id"),
         "upload_count": w.get("upload_count", 0),
+        "upload_tier": w.get("upload_tier", "basic"),
+        "upload_limit": w.get("upload_limit", WEDDING_UPLOAD_TIERS["basic"]),
         "created_at": w.get("created_at"),
     }
 
@@ -464,6 +477,8 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
         count = await db.weddings.count_documents({"restaurant_id": str(user["_id"])})
         if count >= plan["max_weddings"]:
             raise HTTPException(status_code=403, detail=f"Plan limit reached ({plan['name']}: {plan['max_weddings']} weddings). Upgrade to add more.")
+
+    tier = data.upload_tier if data.upload_tier in WEDDING_UPLOAD_TIERS else "basic"
     slug = uuid.uuid4().hex[:10]
     doc = {
         "slug": slug,
@@ -475,14 +490,14 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
         "status": "active",
         "restaurant_id": str(user["_id"]),
         "upload_count": 0,
+        "upload_tier": tier,
+        "upload_limit": WEDDING_UPLOAD_TIERS[tier],
         "created_at": now_iso(),
     }
     res = await db.weddings.insert_one(doc)
     doc["_id"] = res.inserted_id
-    await audit(str(user["_id"]), "create_wedding", f"{data.bride_name} & {data.groom_name}")
+    await audit(str(user["_id"]), "create_wedding", f"{data.bride_name} & {data.groom_name} ({tier})")
 
-    # Optionally create a couple account and send its private-gallery invitation.
-    # A failed delivery must not undo the newly created wedding.
     invite_result = None
     if doc["couple_email"]:
         if not await db.users.find_one({"email": doc["couple_email"]}):
@@ -534,6 +549,45 @@ async def update_wedding_status(slug: str, status: str = Query(...), user: dict 
         raise HTTPException(status_code=403, detail="Not your wedding")
     await db.weddings.update_one({"slug": slug}, {"$set": {"status": status}})
     return {"message": "updated", "status": status}
+
+@api_router.patch("/weddings/{slug}")
+async def update_wedding(slug: str, data: UpdateWeddingInput, user: dict = Depends(require_role("restaurant", "admin"))):
+    w = await db.weddings.find_one({"slug": slug})
+    if not w:
+        raise HTTPException(status_code=404, detail="Wedding not found")
+    if user["role"] != "admin" and w["restaurant_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your wedding")
+
+    updates = {}
+    old_email = w.get("couple_email")
+    new_email = None
+
+    if data.couple_email is not None:
+        new_email = data.couple_email.lower().strip() or None
+        updates["couple_email"] = new_email
+
+    if data.upload_tier is not None:
+        if data.upload_tier not in WEDDING_UPLOAD_TIERS:
+            raise HTTPException(status_code=400, detail="Invalid upload tier")
+        updates["upload_tier"] = data.upload_tier
+        updates["upload_limit"] = WEDDING_UPLOAD_TIERS[data.upload_tier]
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    await db.weddings.update_one({"slug": slug}, {"$set": updates})
+
+    # If the couple's email changed, revoke the OLD account's access to this
+    # gallery so a stale email can't still log in and view it.
+    if data.couple_email is not None and old_email and old_email != new_email:
+        await db.users.update_many(
+            {"email": old_email, "role": "couple", "wedding_id": slug},
+            {"$set": {"wedding_id": None}}
+        )
+
+    await audit(str(user["_id"]), "update_wedding", f"{slug} -> {updates}")
+    updated = await db.weddings.find_one({"slug": slug})
+    return wedding_public(updated)
 
 
 @api_router.delete("/weddings/{slug}")
@@ -717,6 +771,13 @@ async def guest_upload(slug: str, request: Request, file: UploadFile = File(...)
         raise HTTPException(status_code=404, detail="Wedding not found")
     if w.get("status") == "suspended":
         raise HTTPException(status_code=403, detail="Uploads are disabled for this wedding")
+
+    wedding_limit = w.get("upload_limit", WEDDING_UPLOAD_TIERS["basic"])
+    if w.get("upload_count", 0) >= wedding_limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This gallery has reached its {wedding_limit}-photo limit. Please contact the venue.",
+        )
 
     ext = (file.filename.split(".")[-1] if "." in file.filename else "bin").lower()
     ctype = (file.content_type or "").lower()
