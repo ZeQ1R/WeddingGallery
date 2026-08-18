@@ -131,5 +131,4 @@ def _r2():
             region_name="auto",
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         )
-        
     return _r2_client
