@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, LockKey, Images, Trash } from "@phosphor-icons/react";
+import { ArrowLeft, DownloadSimple, Copy, QrCode, CalendarBlank, MapPin, CheckCircle, EnvelopeSimple, LockKey, Images, Trash, PencilSimple } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const UPLOAD_TIERS = {
+  basic: { label: "Basic — 200 uploads", limit: 200 },
+  pro: { label: "Pro — 500 uploads", limit: 500 },
+  premium: { label: "Premium — 600 uploads", limit: 600 },
+};
 
 export default function WeddingDetail() {
   const { slug } = useParams();
@@ -20,14 +29,25 @@ export default function WeddingDetail() {
   const [inviteInfo, setInviteInfo] = useState(null);
   const [inviteLink, setInviteLink] = useState(null);
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editEmail, setEditEmail] = useState("");
+  const [editTier, setEditTier] = useState("basic");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadInviteStatus = () =>
     api.get(`/weddings/${slug}/invite-status`).then(({ data }) => setInviteInfo(data)).catch(() => {});
 
-  useEffect(() => {
-    api.get(`/weddings/${slug}`).then(({ data }) => setWedding(data)).catch((e) => {
+  const loadWedding = () =>
+    api.get(`/weddings/${slug}`).then(({ data }) => {
+      setWedding(data);
+      setEditEmail(data.couple_email || "");
+      setEditTier(data.upload_tier || "basic");
+    }).catch((e) => {
       toast.error(formatApiError(e.response?.data?.detail)); navigate("/dashboard");
     });
+
+  useEffect(() => {
+    loadWedding();
     api.get(`/weddings/${slug}/qr`).then(({ data }) => setQr(data)).catch(() => {});
     loadInviteStatus();
     // eslint-disable-next-line
@@ -65,8 +85,6 @@ export default function WeddingDetail() {
   };
 
   const copyInviteLink = () => {
-    // Synchronous, inside the click handler — required for mobile Safari/Chrome
-    // to treat this as a trusted user gesture and actually allow the clipboard write.
     navigator.clipboard.writeText(inviteLink)
       .then(() => toast.success("Link copied!"))
       .catch(() => toast.error("Couldn't copy — tap the link below to select it manually."));
@@ -82,6 +100,22 @@ export default function WeddingDetail() {
     finally { setDeleting(false); }
   };
 
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    setSavingEdit(true);
+    try {
+      const { data } = await api.patch(`/weddings/${slug}`, {
+        couple_email: editEmail.trim() || null,
+        upload_tier: editTier,
+      });
+      setWedding(data);
+      toast.success("Wedding updated");
+      setEditOpen(false);
+      loadInviteStatus();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setSavingEdit(false); }
+  };
+
   if (!wedding) return <div className="min-h-screen flex items-center justify-center bg-wed-bg">
     <div className="w-10 h-10 rounded-full border-2 border-wed-gold border-t-transparent animate-spin" /></div>;
 
@@ -90,6 +124,46 @@ export default function WeddingDetail() {
       <TopBar title={`${wedding.bride_name} & ${wedding.groom_name}`} subtitle={wedding.venue || "Wedding gallery"}
         right={
           <div className="flex items-center gap-2">
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" data-testid="edit-wedding-btn"
+                  className="rounded-full border-wed-line text-wed-text2 bg-transparent px-4 hover:border-wed-gold hover:text-wed-gold">
+                  <PencilSimple size={16} className="mr-1.5" /> <span className="hidden sm:inline">Edit</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="rounded-3xl border-wed-line max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="font-serif text-3xl font-light">Edit wedding</DialogTitle>
+                  <DialogDescription className="text-wed-text2">Update the couple's email or upload plan.</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={saveEdit} className="space-y-4 mt-2" data-testid="edit-wedding-form">
+                  <div>
+                    <Label className="text-wed-text2">Couple's email</Label>
+                    <Input data-testid="edit-couple-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
+                      className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="couple@email.com" />
+                    <p className="text-xs text-wed-muted mt-1.5">Changing this revokes the old email's access to this gallery.</p>
+                  </div>
+                  <div>
+                    <Label className="text-wed-text2">Upload plan</Label>
+                    <Select value={editTier} onValueChange={setEditTier}>
+                      <SelectTrigger data-testid="edit-upload-tier" className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line h-11 px-4">
+                        <SelectValue>{UPLOAD_TIERS[editTier]?.label}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(UPLOAD_TIERS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-wed-muted mt-1.5">Currently {wedding.upload_count || 0} of {wedding.upload_limit || 200} used.</p>
+                  </div>
+                  <Button type="submit" disabled={savingEdit} data-testid="save-wedding-edit"
+                    className="w-full rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12">
+                    {savingEdit ? "Saving…" : "Save changes"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
             <Dialog open={qrOpen} onOpenChange={setQrOpen}>
             <DialogTrigger asChild>
               <Button data-testid="show-qr-btn" className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5">
@@ -163,7 +237,7 @@ export default function WeddingDetail() {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span className={`text-xs px-3 py-1 rounded-full ${wedding.status === "active" ? "bg-green-50 text-green-600" : wedding.status === "suspended" ? "bg-red-50 text-red-500" : "bg-wed-goldLight text-wed-gold"}`}>{wedding.status}</span>
-              <span className="text-wed-muted text-sm">{wedding.upload_count || 0} memories</span>
+              <span className="text-wed-muted text-sm">{wedding.upload_count || 0} / {wedding.upload_limit || 200} memories</span>
             </div>
             <h2 className="font-serif text-3xl sm:text-4xl font-light break-words">{wedding.bride_name} <span className="text-wed-gold italic">&amp;</span> {wedding.groom_name}</h2>
             <div className="flex flex-wrap gap-4 mt-3 text-sm text-wed-text2">
@@ -222,7 +296,7 @@ export default function WeddingDetail() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm text-wed-text2">
-              <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} memories collected so far
+              <Images size={16} className="text-wed-gold" /> {wedding.upload_count || 0} / {wedding.upload_limit || 200} memories collected so far
             </div>
             {inviteInfo && (
               <div className="inline-flex items-center gap-2 rounded-full bg-white border border-wed-line px-5 py-2.5 text-sm" data-testid="invite-status">
