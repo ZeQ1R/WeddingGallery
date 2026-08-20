@@ -312,8 +312,40 @@ def require_role(*roles):
 
 
 # ---------------------------------------------------------------- auth routes
-@api_router.post("/auth/register")
-async def register(data: RegisterInput, response: Response):
+# @api_router.post("/auth/register")
+# async def register(data: RegisterInput, response: Response):
+#     email = data.email.lower().strip()
+#     if await db.users.find_one({"email": email}):
+#         raise HTTPException(status_code=400, detail="Email already registered")
+#     doc = {
+#         "name": data.name,
+#         "email": email,
+#         "password_hash": hash_password(data.password),
+#         "role": "restaurant",
+#         "business_name": data.business_name or data.name,
+#         "plan": "free_trial",
+#         "status": "pending",
+#         "created_at": now_iso(),
+#     }
+#     res = await db.users.insert_one(doc)
+#     uid = str(res.inserted_id)
+#     access = create_access_token(uid, email, "restaurant")
+#     refresh = create_refresh_token(uid)
+#     set_auth_cookies(response, access, refresh)
+#     await audit(uid, "register", f"Restaurant {data.business_name or data.name} registered")
+#     doc["_id"] = res.inserted_id
+#     return user_public(doc)
+
+class AdminCreateRestaurantInput(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    business_name: Optional[str] = None
+    plan: Optional[str] = "free_trial"
+
+
+@api_router.post("/admin/restaurants/create")
+async def admin_create_restaurant(data: AdminCreateRestaurantInput, admin: dict = Depends(require_role("admin"))):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -323,19 +355,14 @@ async def register(data: RegisterInput, response: Response):
         "password_hash": hash_password(data.password),
         "role": "restaurant",
         "business_name": data.business_name or data.name,
-        "plan": "free_trial",
-        "status": "pending",
+        "plan": data.plan if data.plan in PLANS else "free_trial",
+        "status": "active",
         "created_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
-    uid = str(res.inserted_id)
-    access = create_access_token(uid, email, "restaurant")
-    refresh = create_refresh_token(uid)
-    set_auth_cookies(response, access, refresh)
-    await audit(uid, "register", f"Restaurant {data.business_name or data.name} registered")
+    await audit(str(admin["_id"]), "admin_create_restaurant", f"Created {data.business_name or data.name}")
     doc["_id"] = res.inserted_id
     return user_public(doc)
-
 
 @api_router.post("/auth/login")
 async def login(data: LoginInput, request: Request, response: Response):

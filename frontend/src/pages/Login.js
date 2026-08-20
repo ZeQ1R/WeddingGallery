@@ -65,10 +65,6 @@ export default function Login() {
               {busy ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-
-          <p className="text-wed-text2 mt-8 text-sm">
-            New venue? <Link to="/register" className="text-wed-gold font-medium hover:underline" data-testid="link-register">Create an account</Link>
-          </p>
         </motion.div>
       </div>
     </div>
