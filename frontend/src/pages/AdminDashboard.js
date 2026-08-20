@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Buildings, Confetti, Images, HardDrives, CurrencyDollar, VideoCamera, ImageSquare } from "@phosphor-icons/react";
+import { Buildings, Confetti, Images, HardDrives, CurrencyDollar, VideoCamera, ImageSquare, Plus } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { TopBar } from "@/components/TopBar";
@@ -8,12 +8,19 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const PLAN_LABEL = { free_trial: "Free Trial", basic: "Basic", pro: "Pro", enterprise: "Enterprise" };
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [restaurants, setRestaurants] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", password: "", business_name: "", plan: "free_trial" });
+  const [busy, setBusy] = useState(false);
+  const upd = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const load = async () => {
     try {
@@ -22,6 +29,19 @@ export default function AdminDashboard() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   useEffect(() => { load(); }, []);
+
+  const createRestaurant = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.post("/admin/restaurants/create", form);
+      toast.success("Restaurant account created");
+      setOpen(false);
+      setForm({ name: "", email: "", password: "", business_name: "", plan: "free_trial" });
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setBusy(false); }
+  };
 
   const updatePlan = async (id, plan) => {
     try { await api.patch(`/admin/restaurants/${id}`, null, { params: { plan } }); toast.success("Plan updated"); load(); }
@@ -49,7 +69,60 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-wed-bg">
-      <TopBar title="Platform admin" subtitle="Analytics & management" />
+      <TopBar title="Platform admin" subtitle="Analytics & management"
+        right={
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="new-restaurant-btn" className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-5">
+                <Plus size={18} className="mr-1.5" /> Add restaurant
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="rounded-3xl border-wed-line max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-serif text-3xl font-light">Add a restaurant</DialogTitle>
+                <DialogDescription className="text-wed-text2">Create a new venue account with login credentials.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={createRestaurant} className="space-y-4 mt-2" data-testid="create-restaurant-form">
+                <div>
+                  <Label className="text-wed-text2">Contact name</Label>
+                  <Input data-testid="restaurant-name" required value={form.name} onChange={upd("name")}
+                    className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="Jane Doe" />
+                </div>
+                <div>
+                  <Label className="text-wed-text2">Business name (optional)</Label>
+                  <Input data-testid="restaurant-business-name" value={form.business_name} onChange={upd("business_name")}
+                    className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="Nobel Palace" />
+                </div>
+                <div>
+                  <Label className="text-wed-text2">Email</Label>
+                  <Input data-testid="restaurant-email" type="email" required value={form.email} onChange={upd("email")}
+                    className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="venue@email.com" />
+                </div>
+                <div>
+                  <Label className="text-wed-text2">Password</Label>
+                  <Input data-testid="restaurant-password" type="password" required minLength={6} value={form.password} onChange={upd("password")}
+                    className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line focus-visible:ring-wed-gold h-11 px-4" placeholder="At least 6 characters" />
+                  <p className="text-xs text-wed-muted mt-1.5">Share this with the venue directly \u2014 they can sign in immediately, no approval step needed.</p>
+                </div>
+                <div>
+                  <Label className="text-wed-text2">Plan</Label>
+                  <Select value={form.plan} onValueChange={(v) => setForm({ ...form, plan: v })}>
+                    <SelectTrigger data-testid="restaurant-plan" className="mt-1.5 rounded-full bg-wed-goldLight/50 border-wed-line h-11 px-4">
+                      <SelectValue>{PLAN_LABEL[form.plan]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PLAN_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button data-testid="submit-restaurant" type="submit" disabled={busy}
+                  className="w-full rounded-full bg-wed-gold hover:bg-wed-goldHover text-white h-12">
+                  {busy ? "Creating…" : "Create restaurant account"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        } />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Analytics */}
         <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-5 gap-4 mb-8 sm:mb-12">
@@ -65,7 +138,6 @@ export default function AdminDashboard() {
             </motion.div>
           ))}
 
-          {/* Storage card with usage bar */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}
             className="rounded-3xl bg-white border border-wed-line p-6 wed-shadow">
             {stats ? (<>
