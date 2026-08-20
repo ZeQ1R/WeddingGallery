@@ -42,7 +42,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            {/* <Route path="/register" element={<Register />} /> */}
             <Route path="/wedding/:slug" element={<GuestUpload />} />
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route path="/slideshow/:slug" element={<Protected roles={["couple", "admin"]}><Slideshow /></Protected>} />
