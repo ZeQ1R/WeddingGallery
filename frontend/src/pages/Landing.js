@@ -24,13 +24,13 @@ export default function Landing() {
           </Link>
           <div className="flex items-center gap-3">
             <Link to="/login" data-testid="nav-login">
-              <Button variant="ghost" className="rounded-full text-wed-text2 hover:text-wed-text hover:bg-wed-goldLight">Sign in</Button>
+              {/* <Button variant="ghost" className="rounded-full text-wed-text2 hover:text-wed-text hover:bg-wed-goldLight">Sign in</Button> */}
             </Link>
-            <Link to="/register" data-testid="nav-register">
-              {/* <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white shadow-md shadow-wed-gold/20 px-6">
+            {/* <Link to="/register" data-testid="nav-register">
+              <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white shadow-md shadow-wed-gold/20 px-6">
                 Get started
-              </Button> */}
-            </Link>
+              </Button>
+            </Link> */}
           </div>
         </div>
       </header>
@@ -50,16 +50,16 @@ export default function Landing() {
             The couple receives one private gallery with every moment — no app, no fuss.
           </motion.p>
           <motion.div {...fade(0.18)} className="mt-10 flex flex-wrap items-center gap-4">
-            <Link to="/register" data-testid="hero-cta">
+            <Link data-testid="hero-cta">
               <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white shadow-md shadow-wed-gold/20 px-8 h-12 text-base group">
                 Start your gallery
                 <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={18} />
               </Button>
             </Link>
             <Link to="/login">
-              <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold hover:bg-wed-goldLight h-12 px-8 text-base bg-transparent">
+              {/* <Button variant="outline" className="rounded-full border-wed-gold text-wed-gold hover:bg-wed-goldLight h-12 px-8 text-base bg-transparent">
                 Sign in
-              </Button>
+              </Button> */}
             </Link>
           </motion.div>
         </div>
@@ -112,11 +112,11 @@ export default function Landing() {
           <p className="text-white/70 mt-4 max-w-xl mx-auto relative">
             Delight every couple with a keepsake gallery. Generate QR codes in seconds and manage all your weddings in one place.
           </p>
-          <Link to="/register" className="relative inline-block mt-8" data-testid="cta-bottom">
-            {/* <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-10 h-12 text-base">
+          {/* <Link to="/register" className="relative inline-block mt-8" data-testid="cta-bottom">
+            <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-10 h-12 text-base">
               Create your venue account
-            </Button> */}
-          </Link>
+            </Button>
+          </Link> */}
         </div>
       </section>
 
