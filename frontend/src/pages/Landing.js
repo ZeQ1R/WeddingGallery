@@ -117,7 +117,6 @@ export default function Landing() {
               Create your venue account
             </Button>
           </Link> */}
-          
         </div>
       </section>
 
