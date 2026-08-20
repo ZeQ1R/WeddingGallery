@@ -27,9 +27,9 @@ export default function Landing() {
               <Button variant="ghost" className="rounded-full text-wed-text2 hover:text-wed-text hover:bg-wed-goldLight">Sign in</Button>
             </Link>
             <Link to="/register" data-testid="nav-register">
-              <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white shadow-md shadow-wed-gold/20 px-6">
+              {/* <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white shadow-md shadow-wed-gold/20 px-6">
                 Get started
-              </Button>
+              </Button> */}
             </Link>
           </div>
         </div>
@@ -113,9 +113,9 @@ export default function Landing() {
             Delight every couple with a keepsake gallery. Generate QR codes in seconds and manage all your weddings in one place.
           </p>
           <Link to="/register" className="relative inline-block mt-8" data-testid="cta-bottom">
-            <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-10 h-12 text-base">
+            {/* <Button className="rounded-full bg-wed-gold hover:bg-wed-goldHover text-white px-10 h-12 text-base">
               Create your venue account
-            </Button>
+            </Button> */}
           </Link>
         </div>
       </section>
