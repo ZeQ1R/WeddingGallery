@@ -60,9 +60,9 @@ PLANS = {
 }
 
 WEDDING_UPLOAD_TIERS = {
-    "basic": 200,
+    "basic": 150,
     "pro": 500,
-    "premium": 600,
+    "premium": 800,
 }
 
 # ---- storage guardrails (stay safely under Cloudinary's 25GB free-tier ceiling) ----
