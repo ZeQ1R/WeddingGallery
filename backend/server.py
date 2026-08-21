@@ -1096,6 +1096,37 @@ async def admin_update_restaurant(rid: str, plan: Optional[str] = Query(None),
     return {"message": "updated", **updates}
 
 
+@api_router.delete("/admin/restaurants/{rid}")
+async def admin_delete_restaurant(rid: str, user: dict = Depends(require_role("admin"))):
+    """Permanently remove a restaurant and every wedding, upload, and couple account under it."""
+    target = await db.users.find_one({"_id": ObjectId(rid), "role": "restaurant"})
+    if not target:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    weddings = await db.weddings.find({"restaurant_id": rid}).to_list(10000)
+    for w in weddings:
+        uploads = await db.uploads.find({"wedding_slug": w["slug"]}).to_list(10000)
+        for upload in uploads:
+            path = upload.get("storage_path")
+            if path:
+                try:
+                    storage.delete_object(path)
+                except Exception as e:
+                    logger.warning(f"Could not remove media object for deleted restaurant={rid}, path={path}: {e}")
+        await db.uploads.delete_many({"wedding_slug": w["slug"]})
+        await db.messages.delete_many({"wedding_slug": w["slug"]})
+        await db.users.delete_many({"role": "couple", "wedding_id": w["slug"]})
+
+    await db.weddings.delete_many({"restaurant_id": rid})
+    await db.users.delete_one({"_id": ObjectId(rid)})
+    await audit(
+        str(user["_id"]),
+        "admin_delete_restaurant",
+        f"Deleted {target.get('business_name') or target.get('name')} ({rid}) and {len(weddings)} weddings",
+    )
+    return {"message": "Restaurant and all associated weddings deleted"}
+
+
 # ---------------------------------------------------------------- startup
 @app.on_event("startup")
 async def startup():
