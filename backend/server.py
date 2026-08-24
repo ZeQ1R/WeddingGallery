@@ -60,11 +60,39 @@ PLANS = {
 }
 
 WEDDING_UPLOAD_TIERS = {
-    "basic": 200,
-    "pro": 500,
-    "premium": 600,
+    "basic": {
+        "label": "Basic",
+        "limit": 200,
+        "price_eur": 20,
+        "features": [
+            "200 photo/video uploads",
+            "Guest QR upload page",
+            "Private couple gallery",
+        ],
+    },
+    "pro": {
+        "label": "Pro",
+        "limit": 500,
+        "price_eur": 35,
+        "features": [
+            "500 photo/video uploads",
+            "Everything in Basic",
+            "Full-resolution zip download",
+            "Guest message wall",
+        ],
+    },
+    "premium": {
+        "label": "Premium",
+        "limit": 1000,
+        "price_eur": 50,
+        "features": [
+            "1,000 photo/video uploads",
+            "Everything in Pro",
+            "Slideshow mode for reception screens",
+            "Priority support",
+        ],
+    },
 }
-
 # ---- storage guardrails (stay safely under Cloudinary's 25GB free-tier ceiling) ----
 STORAGE_HARD_LIMIT_BYTES = 20 * 1024 ** 3   # 20GB — uploads blocked past this, leaves 5GB safety buffer
 STORAGE_WARN_THRESHOLD_BYTES = 15 * 1024 ** 3  # 15GB — you get one alert email when crossed
@@ -312,8 +340,40 @@ def require_role(*roles):
 
 
 # ---------------------------------------------------------------- auth routes
-@api_router.post("/auth/register")
-async def register(data: RegisterInput, response: Response):
+# @api_router.post("/auth/register")
+# async def register(data: RegisterInput, response: Response):
+#     email = data.email.lower().strip()
+#     if await db.users.find_one({"email": email}):
+#         raise HTTPException(status_code=400, detail="Email already registered")
+#     doc = {
+#         "name": data.name,
+#         "email": email,
+#         "password_hash": hash_password(data.password),
+#         "role": "restaurant",
+#         "business_name": data.business_name or data.name,
+#         "plan": "free_trial",
+#         "status": "pending",
+#         "created_at": now_iso(),
+#     }
+#     res = await db.users.insert_one(doc)
+#     uid = str(res.inserted_id)
+#     access = create_access_token(uid, email, "restaurant")
+#     refresh = create_refresh_token(uid)
+#     set_auth_cookies(response, access, refresh)
+#     await audit(uid, "register", f"Restaurant {data.business_name or data.name} registered")
+#     doc["_id"] = res.inserted_id
+#     return user_public(doc)
+
+class AdminCreateRestaurantInput(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    business_name: Optional[str] = None
+    plan: Optional[str] = "free_trial"
+
+
+@api_router.post("/admin/restaurants/create")
+async def admin_create_restaurant(data: AdminCreateRestaurantInput, admin: dict = Depends(require_role("admin"))):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -323,19 +383,14 @@ async def register(data: RegisterInput, response: Response):
         "password_hash": hash_password(data.password),
         "role": "restaurant",
         "business_name": data.business_name or data.name,
-        "plan": "free_trial",
-        "status": "pending",
+        "plan": data.plan if data.plan in PLANS else "free_trial",
+        "status": "active",
         "created_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
-    uid = str(res.inserted_id)
-    access = create_access_token(uid, email, "restaurant")
-    refresh = create_refresh_token(uid)
-    set_auth_cookies(response, access, refresh)
-    await audit(uid, "register", f"Restaurant {data.business_name or data.name} registered")
+    await audit(str(admin["_id"]), "admin_create_restaurant", f"Created {data.business_name or data.name}")
     doc["_id"] = res.inserted_id
     return user_public(doc)
-
 
 @api_router.post("/auth/login")
 async def login(data: LoginInput, request: Request, response: Response):
@@ -1067,6 +1122,37 @@ async def admin_update_restaurant(rid: str, plan: Optional[str] = Query(None),
         except Exception as e:
             logger.error(f"approval email failed: {e}")
     return {"message": "updated", **updates}
+
+
+@api_router.delete("/admin/restaurants/{rid}")
+async def admin_delete_restaurant(rid: str, user: dict = Depends(require_role("admin"))):
+    """Permanently remove a restaurant and every wedding, upload, and couple account under it."""
+    target = await db.users.find_one({"_id": ObjectId(rid), "role": "restaurant"})
+    if not target:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    weddings = await db.weddings.find({"restaurant_id": rid}).to_list(10000)
+    for w in weddings:
+        uploads = await db.uploads.find({"wedding_slug": w["slug"]}).to_list(10000)
+        for upload in uploads:
+            path = upload.get("storage_path")
+            if path:
+                try:
+                    storage.delete_object(path)
+                except Exception as e:
+                    logger.warning(f"Could not remove media object for deleted restaurant={rid}, path={path}: {e}")
+        await db.uploads.delete_many({"wedding_slug": w["slug"]})
+        await db.messages.delete_many({"wedding_slug": w["slug"]})
+        await db.users.delete_many({"role": "couple", "wedding_id": w["slug"]})
+
+    await db.weddings.delete_many({"restaurant_id": rid})
+    await db.users.delete_one({"_id": ObjectId(rid)})
+    await audit(
+        str(user["_id"]),
+        "admin_delete_restaurant",
+        f"Deleted {target.get('business_name') or target.get('name')} ({rid}) and {len(weddings)} weddings",
+    )
+    return {"message": "Restaurant and all associated weddings deleted"}
 
 
 # ---------------------------------------------------------------- startup
