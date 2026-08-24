@@ -13,9 +13,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const UPLOAD_TIERS = {
-  basic: { label: "Basic — 200 uploads", limit: 200 },
-  pro: { label: "Pro — 500 uploads", limit: 500 },
-  premium: { label: "Premium — 600 uploads", limit: 600 },
+  basic: { label: "Basic — 200 uploads (€20)", limit: 200 },
+  pro: { label: "Pro — 500 uploads (€35)", limit: 500 },
+  premium: { label: "Premium — 1,000 uploads (€50)", limit: 1000 },
 };
 
 export default function WeddingDetail() {
