@@ -9,7 +9,7 @@ const FAQS = [
   },
   {
     q: "How long does the gallery stay available?",
-    a: "It depends on the plan — Basic galleries stay live for 7 days after the wedding, Pro for 90 days, and Premium galleries never expire.",
+    a: "It depends on the plan — Basic galleries stay live for 7 days after the wedding, Pro for 60 days, and Premium for 90 days.",
   },
   {
     q: "Can the couple download everything at once?",
