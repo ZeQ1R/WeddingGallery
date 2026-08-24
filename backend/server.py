@@ -60,11 +60,39 @@ PLANS = {
 }
 
 WEDDING_UPLOAD_TIERS = {
-    "basic": 150,
-    "pro": 500,
-    "premium": 800,
+    "basic": {
+        "label": "Basic",
+        "limit": 200,
+        "price_eur": 20,
+        "features": [
+            "200 photo/video uploads",
+            "Guest QR upload page",
+            "Private couple gallery",
+        ],
+    },
+    "pro": {
+        "label": "Pro",
+        "limit": 500,
+        "price_eur": 35,
+        "features": [
+            "500 photo/video uploads",
+            "Everything in Basic",
+            "Full-resolution zip download",
+            "Guest message wall",
+        ],
+    },
+    "premium": {
+        "label": "Premium",
+        "limit": 1000,
+        "price_eur": 50,
+        "features": [
+            "1,000 photo/video uploads",
+            "Everything in Pro",
+            "Slideshow mode for reception screens",
+            "Priority support",
+        ],
+    },
 }
-
 # ---- storage guardrails (stay safely under Cloudinary's 25GB free-tier ceiling) ----
 STORAGE_HARD_LIMIT_BYTES = 20 * 1024 ** 3   # 20GB — uploads blocked past this, leaves 5GB safety buffer
 STORAGE_WARN_THRESHOLD_BYTES = 15 * 1024 ** 3  # 15GB — you get one alert email when crossed

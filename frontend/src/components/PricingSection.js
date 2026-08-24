@@ -5,24 +5,23 @@ const TIERS = [
   {
     key: "basic",
     label: "Basic",
-    price: 25,
-    features: ["150 photo/video uploads", "Guest QR upload page", "Private couple gallery"],
+    price: 20,
+    features: ["200 photo/video uploads", "Guest QR upload page", "Private couple gallery"],
   },
   {
     key: "pro",
     label: "Pro",
-    price: 40,
+    price: 35,
     popular: true,
     features: ["500 photo/video uploads", "Everything in Basic", "Full-resolution zip download", "Guest message wall"],
   },
   {
     key: "premium",
     label: "Premium",
-    price: 60,
-    features: ["800 photo/video uploads", "Everything in Pro", "Slideshow mode for reception screens", "Priority support"],
+    price: 50,
+    features: ["1,000 photo/video uploads", "Everything in Pro", "Slideshow mode for reception screens", "Priority support"],
   },
 ];
-
 export function PricingSection() {
   return (
     <section id="pricing" className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24">
