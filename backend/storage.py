@@ -2,6 +2,9 @@ import mimetypes
 import os
 from pathlib import Path
 
+import boto3
+from botocore.client import Config
+from botocore.exceptions import ClientError
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -26,6 +29,21 @@ if USE_CLOUDINARY:
 LOCAL_STORAGE_DIR = Path(os.environ.get("LOCAL_STORAGE_DIR", Path(__file__).resolve().parent / "uploads"))
 LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+_r2_client = None
+
+
+def _r2():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name="auto",
+            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+        )
+    return _r2_client
 
 def init_storage(force: bool = False):
     return "cloudinary" if USE_CLOUDINARY else "local"
