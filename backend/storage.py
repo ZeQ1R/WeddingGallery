@@ -105,6 +105,10 @@ from pathlib import Path
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import requests
 
 APP_NAME = "wedsnap"
 
@@ -133,7 +137,6 @@ def _r2():
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         )
     return _r2_client
-
 
 def init_storage(force: bool = False):
     if USE_R2:
