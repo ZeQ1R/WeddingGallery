@@ -1770,6 +1770,7 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
         "upload_count": 0,
         "upload_tier": tier,
         "upload_limit": WEDDING_UPLOAD_TIERS[tier]["limit"],
+        "folder_name": folder_name,
         "created_at": now_iso(),
     }
     res = await db.weddings.insert_one(doc)
