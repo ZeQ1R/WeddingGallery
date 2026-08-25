@@ -1243,7 +1243,7 @@
 #     client.close()
 
 
-
+import re
 
 from dotenv import load_dotenv
 from pathlib import Path
@@ -1461,6 +1461,12 @@ PyObjectId = Annotated[str, BeforeValidator(_validate_object_id)]
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
+    
+def slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = re.sub(r"-{2,}", "-", text).strip("-")
+    return text or "wedding"
 
 class LoginInput(BaseModel):
     email: EmailStr
@@ -1758,6 +1764,7 @@ async def create_wedding(data: WeddingInput, user: dict = Depends(require_role("
 
     tier = data.upload_tier if data.upload_tier in WEDDING_UPLOAD_TIERS else "basic"
     slug = uuid.uuid4().hex[:10]
+    folder_name = f"{slugify(data.bride_name)}-and-{slugify(data.groom_name)}-{slug[:6]}"
     doc = {
         "slug": slug,
         "bride_name": data.bride_name,
@@ -2084,7 +2091,8 @@ async def guest_upload(slug: str, request: Request, file: UploadFile = File(...)
         )
     await maybe_send_storage_warning(current_total)
 
-    path = f"{storage.APP_NAME}/{slug}/{uuid.uuid4().hex}.{ext}"
+    folder = w.get("folder_name") or slug
+    path = f"{storage.APP_NAME}/{folder}/{uuid.uuid4().hex}.{ext}"
     try:
         result = storage.put_object(path, data, file.content_type or "application/octet-stream")
     except Exception as e:

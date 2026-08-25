@@ -97,6 +97,106 @@
 #     if local_path.exists():
 #         local_path.unlink()
 
+# import mimetypes
+# import os
+# from pathlib import Path
+
+# import boto3
+# from botocore.client import Config
+# from botocore.exceptions import ClientError
+# import cloudinary
+# import cloudinary.uploader
+# import cloudinary.api
+# import requests
+
+# APP_NAME = "wedsnap"
+
+# R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID")
+# R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+# R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+# R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+
+# USE_R2 = bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+
+# LOCAL_STORAGE_DIR = Path(os.environ.get("LOCAL_STORAGE_DIR", Path(__file__).resolve().parent / "uploads"))
+# LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+# _r2_client = None
+
+
+# def _r2():
+#     global _r2_client
+#     if _r2_client is None:
+#         _r2_client = boto3.client(
+#             "s3",
+#             endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+#             aws_access_key_id=R2_ACCESS_KEY_ID,
+#             aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+#             region_name="auto",
+#             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+#         )
+#     return _r2_client
+
+# def init_storage(force: bool = False):
+#     if USE_R2:
+#         _r2()
+#         return "r2"
+#     return "local"
+
+
+# def _local_path(path: str) -> Path:
+#     local_path = LOCAL_STORAGE_DIR / path
+#     local_path.parent.mkdir(parents=True, exist_ok=True)
+#     return local_path
+
+
+# def put_object(path: str, data: bytes, content_type: str) -> dict:
+#     if USE_R2:
+#         _r2().put_object(Bucket=R2_BUCKET_NAME, Key=path, Body=data, ContentType=content_type)
+#         return {"path": path, "size": len(data)}
+
+#     local_path = _local_path(path)
+#     with open(local_path, "wb") as f:
+#         f.write(data)
+#     return {"path": path, "size": len(data)}
+
+
+# def get_object(path: str):
+#     if USE_R2:
+#         try:
+#             obj = _r2().get_object(Bucket=R2_BUCKET_NAME, Key=path)
+#         except ClientError as e:
+#             if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
+#                 raise FileNotFoundError(f"R2 object not found: {path}")
+#             raise
+#         content = obj["Body"].read()
+#         content_type = obj.get("ContentType") or mimetypes.guess_type(path)[0] or "application/octet-stream"
+#         return content, content_type
+
+#     local_path = _local_path(path)
+#     if not local_path.exists():
+#         raise FileNotFoundError(f"Local object not found: {path}")
+#     with open(local_path, "rb") as f:
+#         content = f.read()
+#     content_type = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
+#     return content, content_type
+
+
+# def delete_object(path: str) -> None:
+#     if USE_R2:
+#         try:
+#             _r2().delete_object(Bucket=R2_BUCKET_NAME, Key=path)
+#         except ClientError as e:
+#             if e.response["Error"]["Code"] not in ("NoSuchKey", "404"):
+#                 raise
+#         return
+
+#     local_path = LOCAL_STORAGE_DIR / path
+#     if local_path.exists():
+#         local_path.unlink()
+
+
+
 import mimetypes
 import os
 from pathlib import Path
@@ -104,10 +204,6 @@ from pathlib import Path
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
-import requests
 
 APP_NAME = "wedsnap"
 
@@ -115,6 +211,8 @@ R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID")
 R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+# Optional public domain configured on Cloudflare (e.g., "https://cdn.wedsnap.com" or "https://pub-xxxx.r2.dev")
+R2_PUBLIC_DOMAIN = os.environ.get("R2_PUBLIC_DOMAIN")
 
 USE_R2 = bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
 
@@ -137,6 +235,7 @@ def _r2():
         )
     return _r2_client
 
+
 def init_storage(force: bool = False):
     if USE_R2:
         _r2()
@@ -145,9 +244,12 @@ def init_storage(force: bool = False):
 
 
 def _local_path(path: str) -> Path:
-    local_path = LOCAL_STORAGE_DIR / path
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    return local_path
+    target = (LOCAL_STORAGE_DIR / path).resolve()
+    base_dir = LOCAL_STORAGE_DIR.resolve()
+    if not target.is_relative_to(base_dir):
+        raise ValueError(f"Path traversal attempt detected: {path}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
@@ -191,7 +293,46 @@ def delete_object(path: str) -> None:
                 raise
         return
 
-    local_path = LOCAL_STORAGE_DIR / path
+    local_path = _local_path(path)
     if local_path.exists():
         local_path.unlink()
 
+
+# --- URL Helper Functions ---
+
+def get_presigned_url(path: str, expires_in: int = 3600, http_method: str = "get_object") -> str:
+    """
+    Generates a presigned URL for direct client interactions with R2.
+    - http_method: 'get_object' for downloads, 'put_object' for direct client uploads.
+    - Returns None or raises ValueError when USE_R2 is False.
+    """
+    if not USE_R2:
+        raise ValueError("Presigned URLs are only available when using Cloudflare R2 storage.")
+
+    try:
+        url = _r2().generate_presigned_url(
+            ClientMethod=http_method,
+            Params={"Bucket": R2_BUCKET_NAME, "Key": path},
+            ExpiresIn=expires_in,
+        )
+        return url
+    except ClientError as e:
+        raise RuntimeError(f"Failed to generate presigned URL: {e}")
+
+
+def get_public_url(path: str) -> str:
+    """
+    Returns the public CDN or custom domain URL for an object.
+    Falls back to local file path representation if USE_R2 is False.
+    """
+    if USE_R2 and R2_PUBLIC_DOMAIN:
+        domain = R2_PUBLIC_DOMAIN.rstrip("/")
+        clean_path = path.lstrip("/")
+        return f"{domain}/{clean_path}"
+
+    if USE_R2:
+        # Fallback to generating a presigned URL if no public domain is set
+        return get_presigned_url(path)
+
+    # Local fallback route representation
+    return f"/uploads/{path.lstrip('/')}"
