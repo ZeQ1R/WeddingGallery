@@ -68,12 +68,17 @@ export default function AdminDashboard() {
     finally { setDeletingId(null); }
   };
 
-  const cards = stats ? [
-    { l: "Restaurants", v: stats.total_restaurants, icon: Buildings },
-    { l: "Weddings", v: `${stats.total_weddings}`, sub: `${stats.active_weddings} active`, icon: Confetti },
-    { l: "Total uploads", v: stats.total_uploads, sub: `${stats.photos} photos · ${stats.videos} videos`, icon: Images },
-    { l: "Monthly revenue", v: `$${stats.monthly_revenue.toLocaleString()}`, icon: CurrencyDollar },
-  ] : [];
+ const cards = stats ? [
+  { l: "Restaurants", v: stats.total_restaurants, icon: Buildings },
+  { l: "Weddings", v: `${stats.total_weddings}`, sub: `${stats.active_weddings} active`, icon: Confetti },
+  { l: "Total uploads", v: stats.total_uploads, sub: `${stats.photos} photos · ${stats.videos} videos`, icon: Images },
+  {
+    l: "Platform profit",
+    v: `€${stats.platform_profit_eur?.toLocaleString() ?? 0}`,
+    sub: `€${stats.total_revenue_eur ?? 0} total · €${stats.restaurant_payout_eur ?? 0} to venues`,
+    icon: CurrencyDollar,
+  },
+] : [];
 
   const storagePct = stats ? Math.min(stats.storage_percent_used, 100) : 0;
   const storageBarColor = storagePct > 75 ? "bg-red-500" : storagePct > 50 ? "bg-amber-400" : "bg-wed-gold";
