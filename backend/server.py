@@ -2276,9 +2276,6 @@ async def get_plans():
     return PLANS
 
 
-RESTAURANT_COMMISSION_RATE = 1  # venues earn 20% per wedding, you keep 80%
-
-
 @api_router.get("/admin/analytics")
 async def admin_analytics(user: dict = Depends(require_role("admin"))):
     total_restaurants = await db.users.count_documents({"role": "restaurant"})
@@ -2294,13 +2291,10 @@ async def admin_analytics(user: dict = Depends(require_role("admin"))):
     ]).to_list(1)
     storage_bytes = size_agg[0]["total"] if size_agg else 0
 
-    all_weddings = await db.weddings.find({}).to_list(10000)
-    total_revenue_eur = sum(
-        WEDDING_UPLOAD_TIERS.get(w.get("upload_tier", "basic"), WEDDING_UPLOAD_TIERS["basic"])["price_eur"]
-        for w in all_weddings
-    )
-    restaurant_payout_eur = round(total_revenue_eur * RESTAURANT_COMMISSION_RATE, 2)
-    platform_profit_eur = round(total_revenue_eur - restaurant_payout_eur, 2)
+    revenue = 0
+    restaurants = await db.users.find({"role": "restaurant"}).to_list(1000)
+    for r in restaurants:
+        revenue += PLANS.get(r.get("plan", "free_trial"), {}).get("price", 0)
 
     return {
         "total_restaurants": total_restaurants,
@@ -2313,9 +2307,7 @@ async def admin_analytics(user: dict = Depends(require_role("admin"))):
         "storage_gb": round(storage_bytes / (1024 ** 3), 3),
         "storage_limit_gb": round(STORAGE_HARD_LIMIT_BYTES / (1024 ** 3), 1),
         "storage_percent_used": round((storage_bytes / STORAGE_HARD_LIMIT_BYTES) * 100, 1) if STORAGE_HARD_LIMIT_BYTES else 0,
-        "total_revenue_eur": total_revenue_eur,
-        "restaurant_payout_eur": restaurant_payout_eur,
-        "platform_profit_eur": platform_profit_eur,
+        "monthly_revenue": revenue,
     }
 
 

@@ -106,14 +106,6 @@ export default function RestaurantDashboard() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="mt-2 rounded-xl bg-wed-goldLight/40 px-3 py-2.5 text-xs text-wed-text2">
-                    This wedding costs <span className="font-semibold text-wed-text">€{UPLOAD_TIERS[form.upload_tier].price}</span>
-                    {" — "}the venue earns <span className="font-semibold text-wed-text">
-                      €{(UPLOAD_TIERS[form.upload_tier].price * 0.2).toFixed(2)}
-                    </span> (20%), you keep <span className="font-semibold text-wed-text">
-                      €{(UPLOAD_TIERS[form.upload_tier].price * 0.8).toFixed(2)}
-                    </span>.
-                  </div>
                   <p className="text-xs text-wed-muted mt-1.5">Guests can't upload past this limit for this wedding.</p>
                 </div>
                 <Button data-testid="submit-wedding" type="submit" disabled={busy}
