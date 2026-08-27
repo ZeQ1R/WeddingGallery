@@ -2441,24 +2441,7 @@ async def startup():
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"role": "admin", "password_hash": hash_password(admin_pw)}})
 
-    if os.environ.get("ENV", "development") == "development":
-        demo_slug = "cec8f84007"
-        demo_wedding = await db.weddings.find_one({"slug": demo_slug})
-        if demo_wedding is None:
-            await db.weddings.insert_one({
-                "slug": demo_slug,
-                "bride_name": "Aria",
-                "groom_name": "Leo",
-                "wedding_date": "2026-08-19",
-                "venue": "Elita Terrace",
-                "status": "active",
-                "restaurant_id": str(existing["_id"] if existing else None),
-                "upload_count": 0,
-                "upload_tier": "basic",
-                "upload_limit": WEDDING_UPLOAD_TIERS["basic"]["limit"],
-                "created_at": now_iso(),
-            })
-            logger.info("Demo wedding seeded for local development: %s", demo_slug)
+    
 
     scheduler.add_job(purge_expired_weddings, "interval", hours=24, next_run_time=datetime.now())
     scheduler.start()
