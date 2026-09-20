@@ -5,21 +5,21 @@ const TIERS = [
   {
     key: "basic",
     label: "Basic",
-    price: 20,
-    features: ["200 photo/video uploads", "Guest QR upload page", "Private couple gallery"],
+    price: 29.99,
+    features: ["500 photo/video uploads", "Guest QR upload page", "Private couple gallery"],
   },
   {
     key: "pro",
     label: "Pro",
-    price: 35,
+    price: 59.99,
     popular: true,
-    features: ["500 photo/video uploads", "Everything in Basic", "Full-resolution zip download", "Guest message wall"],
+    features: ["1,500 photo/video uploads", "Everything in Basic", "Full-resolution zip download", "Guest message wall"],
   },
   {
     key: "premium",
     label: "Premium",
-    price: 50,
-    features: ["1,000 photo/video uploads", "Everything in Pro", "Slideshow mode for reception screens", "Priority support"],
+    price: 99.99,
+    features: ["Unlimited photo/video uploads", "Everything in Pro", "Slideshow mode for reception screens", "Priority support"],
   },
 ];
 export function PricingSection() {

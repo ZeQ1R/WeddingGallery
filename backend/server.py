@@ -1303,27 +1303,27 @@ PLANS = {
 }
 
 # ---- storage guardrails (stay safely under the free-tier ceiling) ----
-STORAGE_HARD_LIMIT_BYTES = 20 * 1024 ** 3   # 20GB — uploads blocked past this, leaves buffer
-STORAGE_WARN_THRESHOLD_BYTES = 15 * 1024 ** 3  # 15GB — you get one alert email when crossed
+STORAGE_HARD_LIMIT_BYTES = 150 * 1024 ** 3   # 150GB — plenty of headroom for higher-volume tiers
+STORAGE_WARN_THRESHOLD_BYTES = 100 * 1024 ** 3  # 100GB — one alert email when crossed
 
 # ---- per-wedding upload tiers (what guests can upload, and what venues pay per wedding) ----
 WEDDING_UPLOAD_TIERS = {
     "basic": {
         "label": "Basic",
-        "limit": 200,
-        "price_eur": 20,
+        "limit": 500,
+        "price_eur": 29.99,
         "features": [
-            "200 photo/video uploads",
+            "500 photo/video uploads",
             "Guest QR upload page",
             "Private couple gallery",
         ],
     },
     "pro": {
         "label": "Pro",
-        "limit": 500,
-        "price_eur": 35,
+        "limit": 1500,
+        "price_eur": 59.99,
         "features": [
-            "500 photo/video uploads",
+            "1,500 photo/video uploads",
             "Everything in Basic",
             "Full-resolution zip download",
             "Guest message wall",
@@ -1331,10 +1331,10 @@ WEDDING_UPLOAD_TIERS = {
     },
     "premium": {
         "label": "Premium",
-        "limit": 1000,
-        "price_eur": 50,
+        "limit": 10000,
+        "price_eur": 99.99,
         "features": [
-            "1,000 photo/video uploads",
+            "Unlimited photo/video uploads",
             "Everything in Pro",
             "Slideshow mode for reception screens",
             "Priority support",
