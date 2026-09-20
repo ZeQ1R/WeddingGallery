@@ -14,9 +14,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const UPLOAD_TIERS = {
-  basic: { label: "Basic — 200 uploads (€20)", limit: 200, price: 20 },
-  pro: { label: "Pro — 500 uploads (€35)", limit: 500, price: 35 },
-  premium: { label: "Premium — 1,000 uploads (€50)", limit: 1000, price: 50 },
+  basic: { label: "Basic — 500 uploads (€29.99)", limit: 500, price: 29.99 },
+  pro: { label: "Pro — 1,500 uploads (€59.99)", limit: 1500, price: 59.99 },
+  premium: { label: "Premium — Unlimited uploads (€99.99)", limit: 10000, price: 99.99 },
 };
 
 export default function RestaurantDashboard() {
