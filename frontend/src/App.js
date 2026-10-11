@@ -13,6 +13,7 @@ import CoupleGallery from "@/pages/CoupleGallery";
 import AdminDashboard from "@/pages/AdminDashboard";
 import InviteAccept from "@/pages/InviteAccept";
 import Slideshow from "@/pages/Slideshow";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function Loader() {
   return (
@@ -37,6 +38,7 @@ function Protected({ roles, children }) {
 function App() {
   return (
     <div className="App grain">
+      <ErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -55,6 +57,7 @@ function App() {
         </BrowserRouter>
         <WedToaster />
       </AuthProvider>
+      </ErrorBoundary>
     </div>
   );
 }
