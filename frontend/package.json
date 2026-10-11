@@ -67,17 +67,24 @@
     "build": "craco build",
     "test": "craco test"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+ "browserslist": {
+  "production": [
+    ">0.1%",
+    "not dead",
+    "not op_mini all",
+    "ios_saf >= 12",
+    "safari >= 12",
+    "chrome >= 70",
+    "firefox >= 68",
+    "edge >= 79",
+    "samsung >= 9"
+  ],
+  "development": [
+    "last 1 chrome version",
+    "last 1 firefox version",
+    "last 1 safari version"
+  ]
+}
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",

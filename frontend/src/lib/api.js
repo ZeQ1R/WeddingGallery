@@ -8,6 +8,13 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Public guest pages don't need cookies, so don't send a credentialed cross-site request
+export const publicApi = axios.create({
+  baseURL: API,
+  withCredentials: false,
+  timeout: 30000,
+});
+
 export function formatApiError(detail, fallbackMessage = "Something went wrong. Please try again.") {
   if (detail == null) return fallbackMessage;
   if (typeof detail === "string") return detail;
